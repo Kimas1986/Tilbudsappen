@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 type IncomingSelectedMaterial = {
   materialId?: string;
   name?: string;
@@ -15,6 +12,9 @@ type IncomingSelectedMaterial = {
   markupPercent?: number | string;
   lineTotal?: number | string;
 };
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function toNumber(value: unknown) {
   if (typeof value === "number") {
@@ -63,9 +63,11 @@ export async function POST(request: Request) {
     const fixedPrice = toNumber(body.fixedPrice);
     const hourlyRate = toNumber(body.hourlyRate);
     const hours = toNumber(body.hours);
-    const materials = toNumber(body.materials);
+
+    let materials = toNumber(body.materials);
 
     const vatEnabled = Boolean(body.vatEnabled);
+    const useSavedMaterials = Boolean(body.useSavedMaterials);
 
     const selectedMaterialsRaw: IncomingSelectedMaterial[] = Array.isArray(
       body.selectedMaterials
@@ -104,6 +106,13 @@ export async function POST(request: Request) {
           item.quantity > 0 &&
           item.unitPrice >= 0
       );
+
+    if (useSavedMaterials && selectedMaterials.length > 0) {
+      materials = selectedMaterials.reduce(
+        (sum, item) => sum + Number(item.lineTotal || 0),
+        0
+      );
+    }
 
     const subtotal =
       priceType === "fixed"

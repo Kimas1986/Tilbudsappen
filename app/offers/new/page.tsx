@@ -90,6 +90,7 @@ export default function NewOfferPage() {
   const [materialsError, setMaterialsError] = useState("");
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
+  const [useSavedMaterials, setUseSavedMaterials] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -138,10 +139,10 @@ export default function NewOfferPage() {
   }, [selectedMaterials]);
 
   useEffect(() => {
-    if (selectedMaterials.length > 0) {
+    if (useSavedMaterials) {
       setMaterials(String(Math.round(calculatedMaterialCost * 100) / 100));
     }
-  }, [calculatedMaterialCost, selectedMaterials.length]);
+  }, [calculatedMaterialCost, useSavedMaterials]);
 
   const totals = useMemo(() => {
     const fixed = parseNumber(fixedPrice);
@@ -214,7 +215,7 @@ export default function NewOfferPage() {
         setHours("");
       }
 
-      if (selectedMaterials.length === 0) {
+      if (!useSavedMaterials || selectedMaterials.length === 0) {
         setMaterials(String(suggestion.materials || ""));
       }
     } catch (error) {
@@ -259,6 +260,7 @@ export default function NewOfferPage() {
     ]);
 
     setSelectedMaterialId("");
+    setUseSavedMaterials(true);
   }
 
   function handleMaterialQuantityChange(materialId: string, quantity: string) {
@@ -315,6 +317,7 @@ export default function NewOfferPage() {
           hours,
           materials,
           vatEnabled,
+          useSavedMaterials,
           selectedMaterials,
         }),
       });
@@ -576,8 +579,8 @@ export default function NewOfferPage() {
 
                   {materialsCatalog.map((material) => (
                     <option key={material.id} value={material.id}>
-                      {material.name}{" "}
-                      {material.supplier ? `(${material.supplier})` : ""}
+                      {material.name}
+                      {material.supplier ? ` (${material.supplier})` : ""}
                     </option>
                   ))}
                 </select>
@@ -594,6 +597,19 @@ export default function NewOfferPage() {
               {materialsError ? (
                 <p className="mt-3 text-sm text-red-600">{materialsError}</p>
               ) : null}
+
+              <div className="mt-4 flex items-center gap-3 rounded-2xl bg-neutral-50 px-4 py-3">
+                <input
+                  id="useSavedMaterials"
+                  type="checkbox"
+                  checked={useSavedMaterials}
+                  onChange={() => setUseSavedMaterials(!useSavedMaterials)}
+                  className="h-4 w-4"
+                />
+                <label htmlFor="useSavedMaterials" className="text-sm font-medium">
+                  Bruk materialene over som grunnlag for materialkost
+                </label>
+              </div>
 
               {selectedMaterials.length === 0 ? (
                 <p className="mt-4 text-sm text-neutral-500">
@@ -631,9 +647,7 @@ export default function NewOfferPage() {
                             </div>
 
                             <div>
-                              <p className="text-xs text-neutral-500">
-                                Enhetspris
-                              </p>
+                              <p className="text-xs text-neutral-500">Enhetspris</p>
                               <p className="mt-1 rounded-xl bg-neutral-50 px-3 py-2 text-sm font-medium">
                                 {formatCurrency(item.unitPrice)} kr
                               </p>
