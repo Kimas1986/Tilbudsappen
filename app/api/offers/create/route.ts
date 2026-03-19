@@ -4,6 +4,18 @@ import { createClient } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type IncomingSelectedMaterial = {
+  materialId?: string;
+  name?: string;
+  supplier?: string | null;
+  unit?: string;
+  quantity?: string | number;
+  unitPrice?: number | string;
+  wastePercent?: number | string;
+  markupPercent?: number | string;
+  lineTotal?: number | string;
+};
+
 function toNumber(value: unknown) {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : 0;
@@ -54,6 +66,44 @@ export async function POST(request: Request) {
     const materials = toNumber(body.materials);
 
     const vatEnabled = Boolean(body.vatEnabled);
+
+    const selectedMaterialsRaw: IncomingSelectedMaterial[] = Array.isArray(
+      body.selectedMaterials
+    )
+      ? body.selectedMaterials
+      : [];
+
+    const selectedMaterials = selectedMaterialsRaw
+      .map((item) => {
+        const materialId = String(item.materialId || "").trim();
+        const name = String(item.name || "").trim();
+        const supplier = item.supplier ? String(item.supplier).trim() : null;
+        const unit = String(item.unit || "stk").trim();
+        const quantity = toNumber(item.quantity);
+        const unitPrice = toNumber(item.unitPrice);
+        const wastePercent = toNumber(item.wastePercent);
+        const markupPercent = toNumber(item.markupPercent);
+        const lineTotal = toNumber(item.lineTotal);
+
+        return {
+          materialId,
+          name,
+          supplier,
+          unit,
+          quantity,
+          unitPrice,
+          wastePercent,
+          markupPercent,
+          lineTotal,
+        };
+      })
+      .filter(
+        (item) =>
+          item.materialId &&
+          item.name &&
+          item.quantity > 0 &&
+          item.unitPrice >= 0
+      );
 
     const subtotal =
       priceType === "fixed"
@@ -194,6 +244,38 @@ export async function POST(request: Request) {
         { error: "Kunne ikke lagre tilbud" },
         { status: 500 }
       );
+    }
+
+    if (selectedMaterials.length > 0) {
+      const offerMaterialRows = selectedMaterials.map((item) => ({
+        offer_id: offer.id,
+        user_id: user.id,
+        material_id: item.materialId,
+        material_name: item.name,
+        supplier: item.supplier,
+        unit: item.unit || "stk",
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        waste_percent: item.wastePercent,
+        markup_percent: item.markupPercent,
+        line_total: item.lineTotal,
+      }));
+
+      const { error: insertOfferMaterialsError } = await supabase
+        .from("offer_materials")
+        .insert(offerMaterialRows);
+
+      if (insertOfferMaterialsError) {
+        console.error(
+          "Feil ved lagring av materiallinjer:",
+          insertOfferMaterialsError
+        );
+
+        return NextResponse.json(
+          { error: "Tilbud lagret, men materialer kunne ikke lagres" },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json({

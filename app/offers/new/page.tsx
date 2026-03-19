@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type AiSuggestion = {
   title: string;
@@ -10,6 +10,29 @@ type AiSuggestion = {
   hourlyRate: number;
   materials: number;
   fixedPrice: number;
+};
+
+type MaterialRow = {
+  id: string;
+  name: string;
+  supplier: string | null;
+  unit: string;
+  base_price: number;
+  waste_percent: number;
+  markup_percent: number;
+  pricing_mode: string;
+};
+
+type SelectedMaterial = {
+  materialId: string;
+  name: string;
+  supplier: string | null;
+  unit: string;
+  quantity: string;
+  unitPrice: number;
+  wastePercent: number;
+  markupPercent: number;
+  lineTotal: number;
 };
 
 function parseNumber(value: string) {
@@ -22,6 +45,21 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("no-NO", {
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function calculateMaterialUnitPrice(material: MaterialRow) {
+  const basePrice = Number(material.base_price || 0);
+  const wastePercent = Number(material.waste_percent || 0);
+  const markupPercent = Number(material.markup_percent || 0);
+
+  const withWaste = basePrice * (1 + wastePercent / 100);
+  const withMarkup = withWaste * (1 + markupPercent / 100);
+
+  return Math.round(withMarkup * 100) / 100;
+}
+
+function calculateLineTotal(quantity: string, unitPrice: number) {
+  return parseNumber(quantity) * unitPrice;
 }
 
 export default function NewOfferPage() {
@@ -46,6 +84,64 @@ export default function NewOfferPage() {
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
   const [offerId, setOfferId] = useState<string | null>(null);
+
+  const [materialsCatalog, setMaterialsCatalog] = useState<MaterialRow[]>([]);
+  const [materialsLoading, setMaterialsLoading] = useState(true);
+  const [materialsError, setMaterialsError] = useState("");
+  const [selectedMaterialId, setSelectedMaterialId] = useState("");
+  const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadMaterials() {
+      try {
+        setMaterialsLoading(true);
+        setMaterialsError("");
+
+        const response = await fetch("/api/materials", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data?.error || "Kunne ikke hente materialer");
+        }
+
+        if (!active) return;
+
+        setMaterialsCatalog(Array.isArray(data.materials) ? data.materials : []);
+      } catch (error) {
+        console.error(error);
+
+        if (!active) return;
+
+        setMaterialsError("Kunne ikke hente materialdatabase.");
+      } finally {
+        if (active) {
+          setMaterialsLoading(false);
+        }
+      }
+    }
+
+    loadMaterials();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const calculatedMaterialCost = useMemo(() => {
+    return selectedMaterials.reduce((sum, item) => sum + item.lineTotal, 0);
+  }, [selectedMaterials]);
+
+  useEffect(() => {
+    if (selectedMaterials.length > 0) {
+      setMaterials(String(Math.round(calculatedMaterialCost * 100) / 100));
+    }
+  }, [calculatedMaterialCost, selectedMaterials.length]);
 
   const totals = useMemo(() => {
     const fixed = parseNumber(fixedPrice);
@@ -118,13 +214,71 @@ export default function NewOfferPage() {
         setHours("");
       }
 
-      setMaterials(String(suggestion.materials || ""));
+      if (selectedMaterials.length === 0) {
+        setMaterials(String(suggestion.materials || ""));
+      }
     } catch (error) {
       console.error(error);
       setAiError("Kunne ikke generere forslag.");
     } finally {
       setIsGenerating(false);
     }
+  }
+
+  function handleAddMaterial() {
+    if (!selectedMaterialId) return;
+
+    const material = materialsCatalog.find((item) => item.id === selectedMaterialId);
+
+    if (!material) return;
+
+    const alreadyExists = selectedMaterials.some(
+      (item) => item.materialId === material.id
+    );
+
+    if (alreadyExists) {
+      setSelectedMaterialId("");
+      return;
+    }
+
+    const unitPrice = calculateMaterialUnitPrice(material);
+
+    setSelectedMaterials((prev) => [
+      ...prev,
+      {
+        materialId: material.id,
+        name: material.name,
+        supplier: material.supplier,
+        unit: material.unit,
+        quantity: "1",
+        unitPrice,
+        wastePercent: Number(material.waste_percent || 0),
+        markupPercent: Number(material.markup_percent || 0),
+        lineTotal: calculateLineTotal("1", unitPrice),
+      },
+    ]);
+
+    setSelectedMaterialId("");
+  }
+
+  function handleMaterialQuantityChange(materialId: string, quantity: string) {
+    setSelectedMaterials((prev) =>
+      prev.map((item) =>
+        item.materialId === materialId
+          ? {
+              ...item,
+              quantity,
+              lineTotal: calculateLineTotal(quantity, item.unitPrice),
+            }
+          : item
+      )
+    );
+  }
+
+  function handleRemoveMaterial(materialId: string) {
+    setSelectedMaterials((prev) =>
+      prev.filter((item) => item.materialId !== materialId)
+    );
   }
 
   async function handleSaveOffer() {
@@ -161,6 +315,7 @@ export default function NewOfferPage() {
           hours,
           materials,
           vatEnabled,
+          selectedMaterials,
         }),
       });
 
@@ -399,6 +554,132 @@ export default function NewOfferPage() {
 
             <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
               <div className="mb-4">
+                <h2 className="text-lg font-semibold">Materialer</h2>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Velg fra materialdatabasen og fyll inn antall. Materialkost
+                  summeres automatisk inn i tilbudet.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                <select
+                  value={selectedMaterialId}
+                  onChange={(e) => setSelectedMaterialId(e.target.value)}
+                  className="rounded-2xl border border-neutral-300 px-4 py-3"
+                  disabled={materialsLoading}
+                >
+                  <option value="">
+                    {materialsLoading
+                      ? "Laster materialer..."
+                      : "Velg materiale fra databasen"}
+                  </option>
+
+                  {materialsCatalog.map((material) => (
+                    <option key={material.id} value={material.id}>
+                      {material.name}{" "}
+                      {material.supplier ? `(${material.supplier})` : ""}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={handleAddMaterial}
+                  className="rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white"
+                >
+                  Legg til
+                </button>
+              </div>
+
+              {materialsError ? (
+                <p className="mt-3 text-sm text-red-600">{materialsError}</p>
+              ) : null}
+
+              {selectedMaterials.length === 0 ? (
+                <p className="mt-4 text-sm text-neutral-500">
+                  Ingen materialer valgt enda.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {selectedMaterials.map((item) => (
+                    <div
+                      key={item.materialId}
+                      className="rounded-2xl border border-neutral-200 p-4"
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium">{item.name}</p>
+                          <p className="mt-1 text-sm text-neutral-500">
+                            {item.supplier || "Ukjent leverandør"} • {item.unit}
+                          </p>
+
+                          <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                            <div>
+                              <p className="text-xs text-neutral-500">Antall</p>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  handleMaterialQuantityChange(
+                                    item.materialId,
+                                    e.target.value
+                                  )
+                                }
+                                className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2"
+                              />
+                            </div>
+
+                            <div>
+                              <p className="text-xs text-neutral-500">
+                                Enhetspris
+                              </p>
+                              <p className="mt-1 rounded-xl bg-neutral-50 px-3 py-2 text-sm font-medium">
+                                {formatCurrency(item.unitPrice)} kr
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-xs text-neutral-500">Svinn</p>
+                              <p className="mt-1 rounded-xl bg-neutral-50 px-3 py-2 text-sm font-medium">
+                                {item.wastePercent} %
+                              </p>
+                            </div>
+
+                            <div>
+                              <p className="text-xs text-neutral-500">Linjesum</p>
+                              <p className="mt-1 rounded-xl bg-neutral-50 px-3 py-2 text-sm font-medium">
+                                {formatCurrency(item.lineTotal)} kr
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMaterial(item.materialId)}
+                          className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
+                        >
+                          Fjern
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-4 rounded-2xl bg-neutral-100 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Total materialkost</span>
+                  <span className="text-lg font-bold">
+                    {formatCurrency(calculatedMaterialCost)} kr
+                  </span>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
+              <div className="mb-4">
                 <h2 className="text-lg font-semibold">Prisoppsett</h2>
                 <p className="mt-1 text-sm text-neutral-500">
                   Velg om tilbudet skal være fastpris eller timepris.
@@ -509,6 +790,10 @@ export default function NewOfferPage() {
                   placeholder="F.eks. 3200"
                   className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                 />
+                <p className="mt-2 text-xs text-neutral-500">
+                  Dette feltet fylles automatisk hvis du bruker materiallisten over,
+                  men du kan også justere det manuelt.
+                </p>
               </div>
 
               <div className="mt-5 flex items-center gap-3 rounded-2xl bg-neutral-50 px-4 py-3">
@@ -569,6 +854,11 @@ export default function NewOfferPage() {
                 <p className="mt-1 font-medium">
                   {priceType === "fixed" ? "Fastpris" : "Timepris"}
                 </p>
+              </div>
+
+              <div className="mt-4 rounded-2xl bg-neutral-50 p-4">
+                <p className="text-sm text-neutral-500">Valgte materialer</p>
+                <p className="mt-1 font-medium">{selectedMaterials.length} stk</p>
               </div>
 
               <div className="mt-4 space-y-3 rounded-2xl bg-neutral-100 p-4">
