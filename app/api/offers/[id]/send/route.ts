@@ -50,7 +50,6 @@ export async function POST(
     const pdfBuffer = await renderToBuffer(
       OfferPdf({
         offer,
-        settings,
       })
     );
 
