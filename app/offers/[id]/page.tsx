@@ -31,6 +31,16 @@ function getStatusClasses(status: string) {
   return "bg-neutral-100 text-neutral-800";
 }
 
+function formatDate(value: string | null) {
+  if (!value) return "-";
+
+  try {
+    return new Date(value).toLocaleDateString("no-NO");
+  } catch {
+    return "-";
+  }
+}
+
 export default async function OfferPage({
   params,
 }: {
@@ -57,7 +67,8 @@ export default async function OfferPage({
     notFound();
   }
 
-  const publicUrl = `http://localhost:3000/t/${offer.share_token}`;
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const publicUrl = `${baseUrl}/t/${offer.share_token}`;
   const pdfUrl = `/api/offers/${offer.id}/pdf`;
   const sendUrl = `/api/offers/${offer.id}/send`;
 
@@ -74,6 +85,10 @@ export default async function OfferPage({
                 {offer.created_at
                   ? new Date(offer.created_at).toLocaleString("no-NO")
                   : "-"}
+              </p>
+
+              <p className="mt-1 text-sm text-neutral-500">
+                Gyldig til {formatDate(offer.valid_until)}
               </p>
             </div>
 
