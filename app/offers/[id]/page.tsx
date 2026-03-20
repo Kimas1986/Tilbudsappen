@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 
 type OfferMaterial = {
   id: string;
+  material_id: string | null;
   material_name: string | null;
   supplier: string | null;
   unit: string | null;
@@ -48,6 +49,19 @@ type OfferRow = {
   total: number | null;
   customers?: CustomerRelation;
 };
+
+type MaterialTemplate = {
+  id: string;
+  name: string;
+  description: string | null;
+};
+
+type SearchParams = Promise<{
+  error?: string;
+  success?: string;
+}>;
+
+type TemplateSyncMode = "replace" | "merge";
 
 function isExpired(validUntil: string | null) {
   if (!validUntil) return false;
@@ -165,12 +179,45 @@ function getCustomerInfo(customers: CustomerRelation) {
   };
 }
 
+function buildOfferMaterialRows(
+  materials: { material_id: string | null; quantity: number | null }[],
+  userId: string,
+  templateId: string
+) {
+  const validMaterials = materials.filter((item) => item.material_id);
+
+  const uniqueRows = Array.from(
+    new Map(
+      validMaterials.map((item) => [
+        item.material_id,
+        {
+          template_id: templateId,
+          user_id: userId,
+          material_id: item.material_id,
+          quantity:
+            Number.isFinite(Number(item.quantity)) && Number(item.quantity) > 0
+              ? Number(item.quantity)
+              : 1,
+        },
+      ])
+    ).values()
+  );
+
+  return uniqueRows;
+}
+
 export default async function OfferPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: SearchParams;
 }) {
   const { id } = await params;
+  const resolvedSearchParams = await searchParams;
+  const errorMessage = String(resolvedSearchParams?.error || "").trim();
+  const successMessage = String(resolvedSearchParams?.success || "").trim();
+
   const supabase = await createClient();
 
   const {
@@ -181,44 +228,370 @@ export default async function OfferPage({
     redirect("/login");
   }
 
-  const { data: offer, error } = await supabase
-    .from("offers")
-    .select(
+  async function createTemplateFromOffer(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const offerId = String(formData.get("offerId") || "").trim();
+    const templateName = String(formData.get("templateName") || "").trim();
+    const templateDescription = String(
+      formData.get("templateDescription") || ""
+    ).trim();
+
+    if (!offerId) {
+      redirect("/dashboard");
+    }
+
+    if (!templateName) {
+      redirect(`/offers/${offerId}?error=Du+m%C3%A5+gi+materialmalen+et+navn`);
+    }
+
+    const { data: sourceOffer, error: sourceOfferError } = await supabase
+      .from("offers")
+      .select("id, title, description")
+      .eq("id", offerId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (sourceOfferError || !sourceOffer) {
+      console.error("Feil ved henting av tilbud for mal:", sourceOfferError);
+      redirect(`/offers/${offerId}?error=Kunne+ikke+hente+tilbudet`);
+    }
+
+    const { data: sourceMaterials, error: sourceMaterialsError } = await supabase
+      .from("offer_materials")
+      .select("material_id, quantity")
+      .eq("offer_id", offerId)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
+
+    if (sourceMaterialsError) {
+      console.error("Feil ved henting av materialer for mal:", sourceMaterialsError);
+      redirect(`/offers/${offerId}?error=Kunne+ikke+hente+materiallinjer`);
+    }
+
+    const rows = buildOfferMaterialRows(sourceMaterials || [], user.id, "temp");
+
+    if (rows.length === 0) {
+      redirect(
+        `/offers/${offerId}?error=Tilbudet+m%C3%A5+ha+materialer+fra+materialdatabasen+for+%C3%A5+lage+mal`
+      );
+    }
+
+    const description =
+      templateDescription ||
+      String(sourceOffer.description || "").trim() ||
+      null;
+
+    const { data: createdTemplate, error: createTemplateError } = await supabase
+      .from("material_templates")
+      .insert({
+        user_id: user.id,
+        name: templateName,
+        description,
+      })
+      .select("id")
+      .single();
+
+    if (createTemplateError || !createdTemplate) {
+      console.error("Feil ved opprettelse av mal fra tilbud:", createTemplateError);
+      redirect(`/offers/${offerId}?error=Kunne+ikke+opprette+materialmal`);
+    }
+
+    const insertRows = buildOfferMaterialRows(
+      sourceMaterials || [],
+      user.id,
+      createdTemplate.id
+    );
+
+    const { error: insertItemsError } = await supabase
+      .from("material_template_items")
+      .insert(insertRows);
+
+    if (insertItemsError) {
+      console.error("Feil ved opprettelse av mallinjer fra tilbud:", insertItemsError);
+
+      await supabase
+        .from("material_templates")
+        .delete()
+        .eq("id", createdTemplate.id)
+        .eq("user_id", user.id);
+
+      redirect(`/offers/${offerId}?error=Kunne+ikke+lagre+mallinjer`);
+    }
+
+    redirect(
+      `/offers/${offerId}?success=Materialmal+opprettet+fra+tilbudet`
+    );
+  }
+
+  async function updateExistingTemplateFromOffer(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const offerId = String(formData.get("offerId") || "").trim();
+    const templateId = String(formData.get("templateId") || "").trim();
+    const syncMode = (String(formData.get("syncMode") || "replace").trim() ||
+      "replace") as TemplateSyncMode;
+    const overwriteName =
+      String(formData.get("overwriteName") || "").trim() === "on";
+    const overwriteDescription =
+      String(formData.get("overwriteDescription") || "").trim() === "on";
+
+    if (!offerId) {
+      redirect("/dashboard");
+    }
+
+    if (!templateId) {
+      redirect(`/offers/${offerId}?error=Velg+en+eksisterende+materialmal+f%C3%B8rst`);
+    }
+
+    const [
+      { data: sourceOffer, error: sourceOfferError },
+      { data: template, error: templateError },
+      { data: sourceMaterials, error: sourceMaterialsError },
+    ] = await Promise.all([
+      supabase
+        .from("offers")
+        .select("id, title, description")
+        .eq("id", offerId)
+        .eq("user_id", user.id)
+        .single(),
+      supabase
+        .from("material_templates")
+        .select("id, name, description")
+        .eq("id", templateId)
+        .eq("user_id", user.id)
+        .single(),
+      supabase
+        .from("offer_materials")
+        .select("material_id, quantity")
+        .eq("offer_id", offerId)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true }),
+    ]);
+
+    if (sourceOfferError || !sourceOffer) {
+      console.error("Feil ved henting av tilbud for maloppdatering:", sourceOfferError);
+      redirect(`/offers/${offerId}?error=Kunne+ikke+hente+tilbudet`);
+    }
+
+    if (templateError || !template) {
+      console.error("Feil ved henting av materialmal:", templateError);
+      redirect(`/offers/${offerId}?error=Kunne+ikke+hente+materialmal`);
+    }
+
+    if (sourceMaterialsError) {
+      console.error("Feil ved henting av materialer for maloppdatering:", sourceMaterialsError);
+      redirect(`/offers/${offerId}?error=Kunne+ikke+hente+materiallinjer`);
+    }
+
+    const incomingRows = buildOfferMaterialRows(
+      sourceMaterials || [],
+      user.id,
+      templateId
+    );
+
+    if (incomingRows.length === 0) {
+      redirect(
+        `/offers/${offerId}?error=Tilbudet+m%C3%A5+ha+materialer+fra+materialdatabasen+for+%C3%A5+oppdatere+mal`
+      );
+    }
+
+    const templateUpdatePayload: {
+      name?: string;
+      description?: string | null;
+    } = {};
+
+    if (overwriteName) {
+      templateUpdatePayload.name =
+        String(sourceOffer.title || "").trim() || template.name;
+    }
+
+    if (overwriteDescription) {
+      templateUpdatePayload.description =
+        String(sourceOffer.description || "").trim() || null;
+    }
+
+    if (Object.keys(templateUpdatePayload).length > 0) {
+      const { error: updateTemplateError } = await supabase
+        .from("material_templates")
+        .update(templateUpdatePayload)
+        .eq("id", templateId)
+        .eq("user_id", user.id);
+
+      if (updateTemplateError) {
+        console.error("Feil ved oppdatering av materialmal:", updateTemplateError);
+        redirect(`/offers/${offerId}?error=Kunne+ikke+oppdatere+maldetaljer`);
+      }
+    }
+
+    if (syncMode === "replace") {
+      const { error: deleteItemsError } = await supabase
+        .from("material_template_items")
+        .delete()
+        .eq("template_id", templateId)
+        .eq("user_id", user.id);
+
+      if (deleteItemsError) {
+        console.error("Feil ved tømming av eksisterende mallinjer:", deleteItemsError);
+        redirect(`/offers/${offerId}?error=Kunne+ikke+t%C3%B8mme+eksisterende+mallinjer`);
+      }
+
+      const { error: insertItemsError } = await supabase
+        .from("material_template_items")
+        .insert(incomingRows);
+
+      if (insertItemsError) {
+        console.error("Feil ved oppdatering av mallinjer:", insertItemsError);
+        redirect(`/offers/${offerId}?error=Kunne+ikke+oppdatere+mallinjer`);
+      }
+
+      redirect(
+        `/offers/${offerId}?success=Materialmal+ble+erstattet+med+materialene+fra+tilbudet`
+      );
+    }
+
+    const { data: existingItems, error: existingItemsError } = await supabase
+      .from("material_template_items")
+      .select("id, material_id, quantity")
+      .eq("template_id", templateId)
+      .eq("user_id", user.id);
+
+    if (existingItemsError) {
+      console.error("Feil ved henting av eksisterende mallinjer:", existingItemsError);
+      redirect(`/offers/${offerId}?error=Kunne+ikke+hente+eksisterende+mallinjer`);
+    }
+
+    const existingMap = new Map(
+      (existingItems || []).map((item) => [item.material_id, item])
+    );
+
+    const rowsToInsert: {
+      template_id: string;
+      user_id: string;
+      material_id: string | null;
+      quantity: number;
+    }[] = [];
+
+    const updates = incomingRows
+      .map((row) => {
+        const existing = existingMap.get(row.material_id);
+
+        if (!existing) {
+          rowsToInsert.push(row);
+          return null;
+        }
+
+        return {
+          id: existing.id,
+          quantity: row.quantity,
+        };
+      })
+      .filter(Boolean) as { id: string; quantity: number }[];
+
+    for (const updateRow of updates) {
+      const { error: updateItemError } = await supabase
+        .from("material_template_items")
+        .update({
+          quantity: updateRow.quantity,
+        })
+        .eq("id", updateRow.id)
+        .eq("user_id", user.id);
+
+      if (updateItemError) {
+        console.error("Feil ved oppdatering av eksisterende mallinje:", updateItemError);
+        redirect(`/offers/${offerId}?error=Kunne+ikke+oppdatere+eksisterende+mallinje`);
+      }
+    }
+
+    if (rowsToInsert.length > 0) {
+      const { error: insertNewItemsError } = await supabase
+        .from("material_template_items")
+        .insert(rowsToInsert);
+
+      if (insertNewItemsError) {
+        console.error("Feil ved innlegging av nye mallinjer:", insertNewItemsError);
+        redirect(`/offers/${offerId}?error=Kunne+ikke+legge+til+nye+mallinjer`);
+      }
+    }
+
+    redirect(
+      `/offers/${offerId}?success=Materialmal+ble+oppdatert+uten+%C3%A5+slette+andre+linjer`
+    );
+  }
+
+  const [
+    { data: offer, error },
+    { data: templates, error: templatesError },
+  ] = await Promise.all([
+    supabase
+      .from("offers")
+      .select(
+        `
+        id,
+        title,
+        description,
+        status,
+        created_at,
+        valid_until,
+        approved_at,
+        share_token,
+        price_type,
+        fixed_price,
+        hourly_rate,
+        hours,
+        materials_cost,
+        vat_enabled,
+        vat_amount,
+        subtotal,
+        total,
+        customers(name, email, phone)
       `
-      id,
-      title,
-      description,
-      status,
-      created_at,
-      valid_until,
-      approved_at,
-      share_token,
-      price_type,
-      fixed_price,
-      hourly_rate,
-      hours,
-      materials_cost,
-      vat_enabled,
-      vat_amount,
-      subtotal,
-      total,
-      customers(name, email, phone)
-    `
-    )
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .single();
+      )
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .single(),
+    supabase
+      .from("material_templates")
+      .select("id, name, description")
+      .eq("user_id", user.id)
+      .order("name", { ascending: true }),
+  ]);
 
   if (error || !offer) {
     notFound();
   }
 
+  if (templatesError) {
+    console.error("Feil ved henting av materialmaler:", templatesError);
+  }
+
   const typedOffer = offer as OfferRow;
+  const materialTemplates = (templates as MaterialTemplate[] | null) || [];
 
   const { data: offerMaterials, error: offerMaterialsError } = await supabase
     .from("offer_materials")
     .select(
-      "id, material_name, supplier, unit, quantity, unit_price, waste_percent, markup_percent, line_total"
+      "id, material_id, material_name, supplier, unit, quantity, unit_price, waste_percent, markup_percent, line_total"
     )
     .eq("offer_id", typedOffer.id)
     .eq("user_id", user.id)
@@ -254,6 +627,13 @@ export default async function OfferPage({
     : "";
   const pdfUrl = `/api/offers/${typedOffer.id}/pdf`;
   const sendUrl = `/api/offers/${typedOffer.id}/send`;
+  const defaultTemplateName =
+    String(typedOffer.title || "").trim() || "Ny materialmal";
+
+  const totalMaterialRows = materials.length;
+  const linkedMaterialRows = materials.filter((item) => item.material_id).length;
+  const missingLinkedMaterialRows = totalMaterialRows - linkedMaterialRows;
+  const canCreateTemplate = linkedMaterialRows > 0;
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -296,6 +676,18 @@ export default async function OfferPage({
               </Link>
             </div>
           </div>
+
+          {errorMessage ? (
+            <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {errorMessage}
+            </div>
+          ) : null}
+
+          {successMessage ? (
+            <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              {successMessage}
+            </div>
+          ) : null}
 
           <div className="mt-8 grid gap-4 lg:grid-cols-4">
             <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
@@ -390,9 +782,10 @@ export default async function OfferPage({
             </section>
 
             <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
-              <h2 className="text-lg font-semibold">Handlinger</h2>
+              <h2 className="text-lg font-semibold">Handlinger og maler</h2>
               <p className="mt-2 text-sm text-neutral-600">
-                Herfra kan du åpne PDF, sende e-post og dele kundelenken.
+                Herfra kan du åpne PDF, sende e-post, dele kundelenken og bygge
+                materialmaler fra tilbudet.
               </p>
 
               <div className="mt-4 grid gap-3">
@@ -422,6 +815,203 @@ export default async function OfferPage({
                     Send tilbud på e-post
                   </button>
                 </form>
+
+                <Link
+                  href="/materials"
+                  className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
+                >
+                  Åpne materialmaler
+                </Link>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4">
+                <p className="text-sm font-medium text-neutral-900">
+                  Materialgrunnlag for mal
+                </p>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-neutral-50 p-3">
+                    <p className="text-xs text-neutral-500">Materiallinjer totalt</p>
+                    <p className="mt-1 text-lg font-bold">{totalMaterialRows}</p>
+                  </div>
+
+                  <div className="rounded-2xl bg-neutral-50 p-3">
+                    <p className="text-xs text-neutral-500">Kan brukes i mal</p>
+                    <p className="mt-1 text-lg font-bold">{linkedMaterialRows}</p>
+                  </div>
+
+                  <div className="rounded-2xl bg-neutral-50 p-3">
+                    <p className="text-xs text-neutral-500">Mangler kobling</p>
+                    <p className="mt-1 text-lg font-bold">{missingLinkedMaterialRows}</p>
+                  </div>
+                </div>
+
+                <p className="mt-3 text-sm text-neutral-600">
+                  Bare materialer som er koblet til materialdatabasen blir med i
+                  materialmaler.
+                </p>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-sm font-medium text-emerald-900">
+                  Lag ny materialmal fra dette tilbudet
+                </p>
+                <p className="mt-1 text-sm text-emerald-800">
+                  Lager en helt ny mal basert på materialene i dette tilbudet.
+                </p>
+
+                <form action={createTemplateFromOffer} className="mt-4 space-y-3">
+                  <input type="hidden" name="offerId" value={typedOffer.id} />
+
+                  <div>
+                    <label className="block text-sm font-medium text-emerald-900">
+                      Navn på mal
+                    </label>
+                    <input
+                      name="templateName"
+                      defaultValue={defaultTemplateName}
+                      className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                      placeholder="F.eks. Lettvegg standard"
+                      disabled={!canCreateTemplate}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-emerald-900">
+                      Beskrivelse
+                    </label>
+                    <textarea
+                      name="templateDescription"
+                      rows={3}
+                      defaultValue={typedOffer.description || ""}
+                      className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                      placeholder="Kort beskrivelse av hva malen brukes til"
+                      disabled={!canCreateTemplate}
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={!canCreateTemplate}
+                    className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Lag materialmal fra tilbud
+                  </button>
+                </form>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-medium text-amber-900">
+                  Oppdater eksisterende materialmal fra dette tilbudet
+                </p>
+                <p className="mt-1 text-sm text-amber-800">
+                  Velg om malen skal erstattes helt, eller om vi bare skal
+                  oppdatere og legge til materialer.
+                </p>
+
+                <form action={updateExistingTemplateFromOffer} className="mt-4 space-y-3">
+                  <input type="hidden" name="offerId" value={typedOffer.id} />
+
+                  <div>
+                    <label className="block text-sm font-medium text-amber-900">
+                      Velg materialmal
+                    </label>
+                    <select
+                      name="templateId"
+                      defaultValue=""
+                      className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-4 py-3"
+                      disabled={!canCreateTemplate || materialTemplates.length === 0}
+                    >
+                      <option value="">Velg eksisterende materialmal</option>
+                      {materialTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-amber-900">
+                      Oppdateringsmåte
+                    </label>
+
+                    <div className="mt-2 space-y-3 rounded-2xl bg-white p-4">
+                      <label className="flex items-start gap-3 text-sm text-amber-900">
+                        <input
+                          type="radio"
+                          name="syncMode"
+                          value="replace"
+                          defaultChecked
+                          className="mt-1 h-4 w-4"
+                          disabled={!canCreateTemplate || materialTemplates.length === 0}
+                        />
+                        <span>
+                          <span className="block font-medium">Erstatt hele malen</span>
+                          <span className="block text-amber-800">
+                            Sletter eksisterende mallinjer og legger inn nøyaktig
+                            det som finnes i dette tilbudet.
+                          </span>
+                        </span>
+                      </label>
+
+                      <label className="flex items-start gap-3 text-sm text-amber-900">
+                        <input
+                          type="radio"
+                          name="syncMode"
+                          value="merge"
+                          className="mt-1 h-4 w-4"
+                          disabled={!canCreateTemplate || materialTemplates.length === 0}
+                        />
+                        <span>
+                          <span className="block font-medium">
+                            Legg til og oppdater kun matchende materialer
+                          </span>
+                          <span className="block text-amber-800">
+                            Beholder andre linjer i malen, oppdaterer antall på
+                            materialer som finnes fra før, og legger til nye.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 rounded-2xl bg-white p-4">
+                    <label className="flex items-center gap-3 text-sm text-amber-900">
+                      <input
+                        type="checkbox"
+                        name="overwriteName"
+                        className="h-4 w-4"
+                        disabled={!canCreateTemplate || materialTemplates.length === 0}
+                      />
+                      <span>Oppdater også navn på malen fra tilbudstittelen</span>
+                    </label>
+
+                    <label className="flex items-center gap-3 text-sm text-amber-900">
+                      <input
+                        type="checkbox"
+                        name="overwriteDescription"
+                        className="h-4 w-4"
+                        disabled={!canCreateTemplate || materialTemplates.length === 0}
+                      />
+                      <span>Oppdater også beskrivelse på malen fra tilbudsteksten</span>
+                    </label>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={!canCreateTemplate || materialTemplates.length === 0}
+                    className="w-full rounded-2xl bg-amber-500 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Oppdater valgt materialmal
+                  </button>
+                </form>
+
+                {materialTemplates.length === 0 ? (
+                  <p className="mt-3 text-sm text-amber-900">
+                    Du har ingen materialmaler enda. Lag en ny først.
+                  </p>
+                ) : null}
               </div>
 
               <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4">

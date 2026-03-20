@@ -233,6 +233,48 @@ export default async function MaterialsPage({
     redirect("/materials");
   }
 
+  async function updateTemplate(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const templateId = String(formData.get("templateId") || "").trim();
+    const name = String(formData.get("template_name") || "").trim();
+    const description = String(formData.get("template_description") || "").trim();
+
+    if (!templateId) {
+      redirect("/materials?error=Mangler+materialmal+som+skal+oppdateres");
+    }
+
+    if (!name) {
+      redirect("/materials?error=Materialmal+m%C3%A5+ha+et+navn");
+    }
+
+    const { error } = await supabase
+      .from("material_templates")
+      .update({
+        name,
+        description: description || null,
+      })
+      .eq("id", templateId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Feil ved oppdatering av materialmal:", error);
+      redirect("/materials?error=Kunne+ikke+oppdatere+materialmal");
+    }
+
+    redirect("/materials");
+  }
+
   async function deleteTemplate(formData: FormData) {
     "use server";
 
@@ -736,84 +778,130 @@ export default async function MaterialsPage({
                         key={template.id}
                         className="rounded-2xl border border-neutral-200 p-5"
                       >
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-lg font-semibold">{template.name}</p>
+                        <div className="flex flex-col gap-5">
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-lg font-semibold">{template.name}</p>
 
-                            {template.description ? (
-                              <p className="mt-1 text-sm text-neutral-500">
-                                {template.description}
+                              {template.description ? (
+                                <p className="mt-1 text-sm text-neutral-500">
+                                  {template.description}
+                                </p>
+                              ) : null}
+
+                              <p className="mt-2 text-xs text-neutral-500">
+                                Opprettet: {formatDate(template.created_at)}
                               </p>
-                            ) : null}
+                            </div>
 
-                            <p className="mt-2 text-xs text-neutral-500">
-                              Opprettet: {formatDate(template.created_at)}
-                            </p>
+                            <form action={deleteTemplate}>
+                              <input
+                                type="hidden"
+                                name="templateId"
+                                value={template.id}
+                              />
+                              <button
+                                type="submit"
+                                className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
+                              >
+                                Slett mal
+                              </button>
+                            </form>
                           </div>
 
-                          <form action={deleteTemplate}>
-                            <input
-                              type="hidden"
-                              name="templateId"
-                              value={template.id}
-                            />
-                            <button
-                              type="submit"
-                              className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
+                          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+                            <h3 className="text-sm font-semibold">
+                              Rediger materialmal
+                            </h3>
+
+                            <form action={updateTemplate} className="mt-3 space-y-3">
+                              <input
+                                type="hidden"
+                                name="templateId"
+                                value={template.id}
+                              />
+
+                              <div>
+                                <label className="block text-sm font-medium">
+                                  Navn
+                                </label>
+                                <input
+                                  name="template_name"
+                                  defaultValue={template.name}
+                                  className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium">
+                                  Beskrivelse
+                                </label>
+                                <textarea
+                                  name="template_description"
+                                  rows={3}
+                                  defaultValue={template.description || ""}
+                                  className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                />
+                              </div>
+
+                              <button
+                                type="submit"
+                                className="rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white"
+                              >
+                                Lagre mal
+                              </button>
+                            </form>
+                          </div>
+
+                          <div className="rounded-2xl bg-neutral-50 p-4">
+                            <h3 className="text-sm font-semibold">
+                              Legg til materiale i mal
+                            </h3>
+
+                            <form
+                              action={addTemplateItem}
+                              className="mt-3 grid gap-3 lg:grid-cols-[1fr_160px_auto]"
                             >
-                              Slett mal
-                            </button>
-                          </form>
-                        </div>
+                              <input
+                                type="hidden"
+                                name="templateId"
+                                value={template.id}
+                              />
 
-                        <div className="mt-5 rounded-2xl bg-neutral-50 p-4">
-                          <h3 className="text-sm font-semibold">
-                            Legg til materiale i mal
-                          </h3>
+                              <select
+                                name="materialId"
+                                className="rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                defaultValue=""
+                              >
+                                <option value="">Velg materiale</option>
+                                {typedMaterials.map((material) => (
+                                  <option key={material.id} value={material.id}>
+                                    {material.name}
+                                    {material.supplier
+                                      ? ` (${material.supplier})`
+                                      : ""}
+                                  </option>
+                                ))}
+                              </select>
 
-                          <form
-                            action={addTemplateItem}
-                            className="mt-3 grid gap-3 lg:grid-cols-[1fr_160px_auto]"
-                          >
-                            <input
-                              type="hidden"
-                              name="templateId"
-                              value={template.id}
-                            />
+                              <input
+                                name="quantity"
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                defaultValue="1"
+                                className="rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                placeholder="Antall"
+                              />
 
-                            <select
-                              name="materialId"
-                              className="rounded-2xl border border-neutral-300 bg-white px-4 py-3"
-                              defaultValue=""
-                            >
-                              <option value="">Velg materiale</option>
-                              {typedMaterials.map((material) => (
-                                <option key={material.id} value={material.id}>
-                                  {material.name}
-                                  {material.supplier
-                                    ? ` (${material.supplier})`
-                                    : ""}
-                                </option>
-                              ))}
-                            </select>
-
-                            <input
-                              name="quantity"
-                              type="number"
-                              step="0.01"
-                              min="0.01"
-                              defaultValue="1"
-                              className="rounded-2xl border border-neutral-300 bg-white px-4 py-3"
-                              placeholder="Antall"
-                            />
-
-                            <button
-                              type="submit"
-                              className="rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white"
-                            >
-                              Legg til
-                            </button>
-                          </form>
+                              <button
+                                type="submit"
+                                className="rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white"
+                              >
+                                Legg til
+                              </button>
+                            </form>
+                          </div>
                         </div>
 
                         {templateItemsForThis.length === 0 ? (
