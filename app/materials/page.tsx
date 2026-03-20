@@ -336,6 +336,46 @@ export default async function MaterialsPage({
     redirect("/materials");
   }
 
+  async function updateTemplateItemQuantity(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const templateItemId = String(formData.get("templateItemId") || "").trim();
+    const quantity = Number(formData.get("quantity") || 0);
+
+    if (!templateItemId) {
+      redirect("/materials?error=Mangler+mallinje+som+skal+oppdateres");
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      redirect("/materials?error=Antall+m%C3%A5+v%C3%A6re+st%C3%B8rre+enn+0");
+    }
+
+    const { error } = await supabase
+      .from("material_template_items")
+      .update({
+        quantity,
+      })
+      .eq("id", templateItemId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Feil ved oppdatering av mallinje:", error);
+      redirect("/materials?error=Kunne+ikke+oppdatere+antall+i+mal");
+    }
+
+    redirect("/materials");
+  }
+
   async function deleteTemplateItem(formData: FormData) {
     "use server";
 
@@ -822,12 +862,33 @@ export default async function MaterialsPage({
                                         <span>{material.unit}</span>
                                       </div>
 
-                                      <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
+                                      <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
                                         <div className="rounded-xl bg-neutral-50 p-3">
                                           <p className="text-neutral-500">Antall</p>
-                                          <p className="mt-1 font-medium">
-                                            {item.quantity || 0} {material.unit}
-                                          </p>
+                                          <form
+                                            action={updateTemplateItemQuantity}
+                                            className="mt-2 flex gap-2"
+                                          >
+                                            <input
+                                              type="hidden"
+                                              name="templateItemId"
+                                              value={item.id}
+                                            />
+                                            <input
+                                              name="quantity"
+                                              type="number"
+                                              step="0.01"
+                                              min="0.01"
+                                              defaultValue={String(item.quantity || 1)}
+                                              className="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2"
+                                            />
+                                            <button
+                                              type="submit"
+                                              className="rounded-xl bg-black px-3 py-2 text-xs font-medium text-white"
+                                            >
+                                              Lagre
+                                            </button>
+                                          </form>
                                         </div>
 
                                         <div className="rounded-xl bg-neutral-50 p-3">
