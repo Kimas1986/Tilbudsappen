@@ -3,6 +3,16 @@ import { redirect, notFound } from "next/navigation";
 import CopyLinkButton from "@/components/copy-link-button";
 import { createClient } from "@/lib/supabase/server";
 
+type OfferMaterial = {
+  id: string;
+  material_name: string | null;
+  supplier: string | null;
+  unit: string | null;
+  quantity: number | null;
+  unit_price: number | null;
+  line_total: number | null;
+};
+
 function getStatusLabel(status: string) {
   if (status === "approved") return "Godkjent";
   if (status === "draft") return "Utkast";
@@ -41,6 +51,12 @@ function formatDate(value: string | null) {
   }
 }
 
+function formatCurrency(value: number | null) {
+  return new Intl.NumberFormat("no-NO", {
+    maximumFractionDigits: 0,
+  }).format(value || 0);
+}
+
 export default async function OfferPage({
   params,
 }: {
@@ -61,11 +77,25 @@ export default async function OfferPage({
     .from("offers")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .single();
 
   if (error || !offer) {
     notFound();
   }
+
+  const { data: offerMaterials, error: offerMaterialsError } = await supabase
+    .from("offer_materials")
+    .select("id, material_name, supplier, unit, quantity, unit_price, line_total")
+    .eq("offer_id", offer.id)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true });
+
+  if (offerMaterialsError) {
+    console.error("Feil ved henting av materiallinjer:", offerMaterialsError);
+  }
+
+  const materials = (offerMaterials as OfferMaterial[] | null) || [];
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const publicUrl = `${baseUrl}/t/${offer.share_token}`;
@@ -74,7 +104,7 @@ export default async function OfferPage({
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <div className="mx-auto max-w-3xl px-6 py-12">
+      <div className="mx-auto max-w-4xl px-6 py-12">
         <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -122,10 +152,79 @@ export default async function OfferPage({
             </div>
           </div>
 
+          <div className="mt-6 rounded-2xl border border-neutral-200 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-lg font-semibold">Materialer</p>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Materialer som er lagt inn på tilbudet.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-neutral-100 px-3 py-2 text-sm font-medium">
+                {materials.length} linjer
+              </div>
+            </div>
+
+            {materials.length === 0 ? (
+              <p className="mt-4 text-sm text-neutral-500">
+                Ingen materialer lagt inn på dette tilbudet.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {materials.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">
+                          {item.material_name || "Materiale"}
+                        </p>
+
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+                          <span>{item.supplier || "Ukjent leverandør"}</span>
+                          <span>•</span>
+                          <span>{item.unit || "stk"}</span>
+                        </div>
+                      </div>
+
+                      <div className="grid min-w-[240px] gap-2 text-sm sm:grid-cols-3">
+                        <div className="rounded-xl bg-white p-3">
+                          <p className="text-neutral-500">Antall</p>
+                          <p className="mt-1 font-medium">
+                            {item.quantity || 0} {item.unit || "stk"}
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl bg-white p-3">
+                          <p className="text-neutral-500">Enhetspris</p>
+                          <p className="mt-1 font-medium">
+                            {formatCurrency(item.unit_price)} kr
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl bg-white p-3">
+                          <p className="text-neutral-500">Linjesum</p>
+                          <p className="mt-1 font-medium">
+                            {formatCurrency(item.line_total)} kr
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="mt-6 space-y-2 rounded-2xl bg-neutral-100 p-4">
-            <p>Subtotal: {offer.subtotal} kr</p>
-            <p>MVA: {offer.vat_amount} kr</p>
-            <p className="text-lg font-bold">Totalt: {offer.total} kr</p>
+            <p>Subtotal: {formatCurrency(offer.subtotal)} kr</p>
+            <p>MVA: {formatCurrency(offer.vat_amount)} kr</p>
+            <p className="text-lg font-bold">
+              Totalt: {formatCurrency(offer.total)} kr
+            </p>
           </div>
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
