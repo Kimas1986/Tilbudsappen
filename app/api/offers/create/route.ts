@@ -13,6 +13,18 @@ type IncomingSelectedMaterial = {
   lineTotal?: number | string;
 };
 
+type CleanSelectedMaterial = {
+  materialId: string;
+  name: string;
+  supplier: string | null;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  wastePercent: number;
+  markupPercent: number;
+  lineTotal: number;
+};
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -30,10 +42,78 @@ function toNumber(value: unknown) {
   return 0;
 }
 
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 function addDaysToNow(days: number) {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return date.toISOString();
+}
+
+function clampMinimum(value: number, minimum: number) {
+  return value < minimum ? minimum : value;
+}
+
+function sanitizeSelectedMaterials(
+  selectedMaterialsRaw: IncomingSelectedMaterial[]
+) {
+  return selectedMaterialsRaw
+    .map((item): CleanSelectedMaterial => {
+      const materialId = String(item.materialId || "").trim();
+      const name = String(item.name || "").trim();
+      const supplier = item.supplier ? String(item.supplier).trim() : null;
+      const unit = String(item.unit || "stk").trim() || "stk";
+      const quantity = clampMinimum(toNumber(item.quantity), 0);
+      const unitPrice = clampMinimum(toNumber(item.unitPrice), 0);
+      const wastePercent = clampMinimum(toNumber(item.wastePercent), 0);
+      const markupPercent = clampMinimum(toNumber(item.markupPercent), 0);
+
+      const incomingLineTotal = clampMinimum(toNumber(item.lineTotal), 0);
+      const calculatedLineTotal = roundMoney(quantity * unitPrice);
+      const lineTotal =
+        incomingLineTotal > 0 ? roundMoney(incomingLineTotal) : calculatedLineTotal;
+
+      return {
+        materialId,
+        name,
+        supplier,
+        unit,
+        quantity: roundMoney(quantity),
+        unitPrice: roundMoney(unitPrice),
+        wastePercent: roundMoney(wastePercent),
+        markupPercent: roundMoney(markupPercent),
+        lineTotal,
+      };
+    })
+    .filter(
+      (item) =>
+        item.materialId &&
+        item.name &&
+        item.quantity > 0 &&
+        item.unitPrice >= 0
+    );
+}
+
+function buildOfferTitle(
+  titleInput: string,
+  description: string,
+  customerName: string
+) {
+  if (titleInput) {
+    return titleInput;
+  }
+
+  if (description) {
+    return description.slice(0, 120);
+  }
+
+  if (customerName) {
+    return `Tilbud til ${customerName}`;
+  }
+
+  return "Tilbud";
 }
 
 export async function POST(request: Request) {
@@ -60,11 +140,10 @@ export async function POST(request: Request) {
     const description = String(body.description || "").trim();
     const priceType = body.priceType === "hourly" ? "hourly" : "fixed";
 
-    const fixedPrice = toNumber(body.fixedPrice);
-    const hourlyRate = toNumber(body.hourlyRate);
-    const hours = toNumber(body.hours);
-
-    let materials = toNumber(body.materials);
+    const fixedPriceInput = clampMinimum(toNumber(body.fixedPrice), 0);
+    const hourlyRateInput = clampMinimum(toNumber(body.hourlyRate), 0);
+    const hoursInput = clampMinimum(toNumber(body.hours), 0);
+    let materialsInput = clampMinimum(toNumber(body.materials), 0);
 
     const vatEnabled = Boolean(body.vatEnabled);
     const useSavedMaterials = Boolean(body.useSavedMaterials);
@@ -75,61 +154,68 @@ export async function POST(request: Request) {
       ? body.selectedMaterials
       : [];
 
-    const selectedMaterials = selectedMaterialsRaw
-      .map((item) => {
-        const materialId = String(item.materialId || "").trim();
-        const name = String(item.name || "").trim();
-        const supplier = item.supplier ? String(item.supplier).trim() : null;
-        const unit = String(item.unit || "stk").trim();
-        const quantity = toNumber(item.quantity);
-        const unitPrice = toNumber(item.unitPrice);
-        const wastePercent = toNumber(item.wastePercent);
-        const markupPercent = toNumber(item.markupPercent);
-        const lineTotal = toNumber(item.lineTotal);
+    const selectedMaterials = sanitizeSelectedMaterials(selectedMaterialsRaw);
 
-        return {
-          materialId,
-          name,
-          supplier,
-          unit,
-          quantity,
-          unitPrice,
-          wastePercent,
-          markupPercent,
-          lineTotal,
-        };
-      })
-      .filter(
-        (item) =>
-          item.materialId &&
-          item.name &&
-          item.quantity > 0 &&
-          item.unitPrice >= 0
-      );
+    if (!customerName) {
+      return NextResponse.json({ error: "Fyll inn kundenavn" }, { status: 400 });
+    }
 
-    if (useSavedMaterials && selectedMaterials.length > 0) {
-      materials = selectedMaterials.reduce(
-        (sum, item) => sum + Number(item.lineTotal || 0),
-        0
+    if (!description) {
+      return NextResponse.json(
+        { error: "Fyll inn beskrivelse" },
+        { status: 400 }
       );
     }
 
-    const subtotal =
+    let fixedPrice = roundMoney(fixedPriceInput);
+    let hourlyRate = roundMoney(hourlyRateInput);
+    let hours = roundMoney(hoursInput);
+    let materials = roundMoney(materialsInput);
+
+    if (useSavedMaterials && selectedMaterials.length > 0) {
+      materials = roundMoney(
+        selectedMaterials.reduce((sum, item) => sum + item.lineTotal, 0)
+      );
+    }
+
+    if (priceType === "fixed") {
+      hourlyRate = 0;
+      hours = 0;
+
+      if (fixedPrice <= 0) {
+        return NextResponse.json(
+          { error: "Fyll inn fastpris" },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (priceType === "hourly") {
+      fixedPrice = 0;
+
+      if (hourlyRate <= 0) {
+        return NextResponse.json(
+          { error: "Fyll inn timepris" },
+          { status: 400 }
+        );
+      }
+
+      if (hours <= 0) {
+        return NextResponse.json({ error: "Fyll inn timer" }, { status: 400 });
+      }
+    }
+
+    const subtotal = roundMoney(
       priceType === "fixed"
         ? fixedPrice + materials
-        : hourlyRate * hours + materials;
+        : hourlyRate * hours + materials
+    );
 
-    const vat = vatEnabled ? subtotal * 0.25 : 0;
-    const total = subtotal + vat;
+    const vatRate = vatEnabled ? 25 : 0;
+    const vatAmount = vatEnabled ? roundMoney(subtotal * 0.25) : 0;
+    const total = roundMoney(subtotal + vatAmount);
 
-    const title =
-      titleInput.length > 0
-        ? titleInput
-        : description.length > 0
-          ? description.slice(0, 120)
-          : customerName
-            ? `Tilbud til ${customerName}`
-            : "Tilbud";
+    const title = buildOfferTitle(titleInput, description, customerName);
 
     const { data: settings, error: settingsError } = await supabase
       .from("ai_settings")
@@ -236,9 +322,9 @@ export async function POST(request: Request) {
         hours: priceType === "hourly" ? hours : null,
         materials_cost: materials,
         vat_enabled: vatEnabled,
-        vat_rate: 25,
+        vat_rate: vatRate,
         subtotal,
-        vat_amount: vat,
+        vat_amount: vatAmount,
         total,
         status: "draft",
         valid_until: validUntil,

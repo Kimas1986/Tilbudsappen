@@ -5,11 +5,13 @@ type OfferRow = {
   id: string;
   title: string | null;
   total: number | null;
-  created_at: string | null;
+  subtotal: number | null;
+  vat_amount: number | null;
   status: string;
   description: string | null;
-  customer_id: string | null;
+  created_at: string | null;
   valid_until: string | null;
+  approved_at: string | null;
   customers:
     | {
         name: string | null;
@@ -55,6 +57,7 @@ function getCustomerName(offer: OfferRow) {
   if (Array.isArray(offer.customers)) {
     return offer.customers[0]?.name || "Uten kunde";
   }
+
   return offer.customers?.name || "Uten kunde";
 }
 
@@ -71,6 +74,46 @@ function formatDate(value: string | null) {
 
 function getStatusCount(offers: OfferRow[], status: string) {
   return offers.filter((offer) => getDisplayStatus(offer) === status).length;
+}
+
+function sumOfferValues(
+  offers: OfferRow[],
+  statuses?: string[],
+  field: "total" | "subtotal" | "vat_amount" = "total"
+) {
+  return offers.reduce((sum, offer) => {
+    const displayStatus = getDisplayStatus(offer);
+
+    if (statuses && !statuses.includes(displayStatus)) {
+      return sum;
+    }
+
+    return sum + Number(offer[field] || 0);
+  }, 0);
+}
+
+function calculateApprovalRate(offers: OfferRow[]) {
+  const sentOrApproved = offers.filter((offer) => {
+    const displayStatus = getDisplayStatus(offer);
+    return displayStatus === "sent" || displayStatus === "approved";
+  }).length;
+
+  const approved = offers.filter(
+    (offer) => getDisplayStatus(offer) === "approved"
+  ).length;
+
+  if (sentOrApproved === 0) {
+    return 0;
+  }
+
+  return Math.round((approved / sentOrApproved) * 100);
+}
+
+function averageOfferValue(offers: OfferRow[]) {
+  if (offers.length === 0) return 0;
+
+  const total = offers.reduce((sum, offer) => sum + Number(offer.total || 0), 0);
+  return Math.round(total / offers.length);
 }
 
 export default async function DashboardPage() {
@@ -115,7 +158,7 @@ export default async function DashboardPage() {
   const { data: offers, error } = await supabase
     .from("offers")
     .select(
-      "id, title, total, created_at, status, description, customer_id, valid_until, customers(name)"
+      "id, title, total, subtotal, vat_amount, status, description, created_at, valid_until, approved_at, customers(name)"
     )
     .order("created_at", { ascending: false });
 
@@ -124,24 +167,42 @@ export default async function DashboardPage() {
   }
 
   const typedOffers = (offers as OfferRow[] | null) || [];
+
   const draftCount = getStatusCount(typedOffers, "draft");
   const sentCount = getStatusCount(typedOffers, "sent");
   const approvedCount = getStatusCount(typedOffers, "approved");
+  const expiredCount = getStatusCount(typedOffers, "expired");
+
+  const totalOfferCount = typedOffers.length;
+  const totalValueAll = sumOfferValues(typedOffers);
+  const totalSentValue = sumOfferValues(typedOffers, ["sent"]);
+  const totalApprovedValue = sumOfferValues(typedOffers, ["approved"]);
+  const totalDraftValue = sumOfferValues(typedOffers, ["draft"]);
+  const approvalRate = calculateApprovalRate(typedOffers);
+  const averageValue = averageOfferValue(typedOffers);
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <div className="mx-auto max-w-5xl px-6 py-12">
+      <div className="mx-auto max-w-7xl px-6 py-12">
         <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-sm font-medium text-neutral-500">Tilbudsapp</p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight">
+                Dashboard
+              </h1>
               <p className="mt-4 text-neutral-600">Du er logget inn som:</p>
-              <p className="mt-2 rounded-2xl bg-neutral-100 px-4 py-3 font-medium">
+              <p className="mt-2 inline-flex rounded-2xl bg-neutral-100 px-4 py-3 font-medium">
                 {user.email}
+              </p>
+              <p className="mt-4 max-w-2xl text-sm text-neutral-600">
+                Her ser du status på tilbudene dine, hvor mye som ligger ute,
+                hva som er godkjent og hva som begynner å bygge seg opp i
+                pipeline.
               </p>
             </div>
 
-            <div className="flex flex-col gap-3 sm:w-56">
+            <div className="grid gap-3 sm:grid-cols-2 lg:w-[360px]">
               <a
                 href="/offers/new"
                 className="rounded-2xl bg-black px-5 py-3 text-center text-sm font-medium text-white"
@@ -172,50 +233,151 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-yellow-100">
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl bg-yellow-50 p-5 ring-1 ring-yellow-100">
               <p className="text-sm text-yellow-800">Utkast</p>
               <p className="mt-2 text-2xl font-bold text-yellow-900">
                 {draftCount}
               </p>
+              <p className="mt-2 text-sm text-yellow-900/80">
+                {formatCurrency(totalDraftValue)} kr i utkast
+              </p>
             </div>
 
-            <div className="rounded-2xl bg-blue-50 p-4 ring-1 ring-blue-100">
+            <div className="rounded-2xl bg-blue-50 p-5 ring-1 ring-blue-100">
               <p className="text-sm text-blue-800">Sendt</p>
               <p className="mt-2 text-2xl font-bold text-blue-900">
                 {sentCount}
               </p>
+              <p className="mt-2 text-sm text-blue-900/80">
+                {formatCurrency(totalSentValue)} kr ute hos kunder
+              </p>
             </div>
 
-            <div className="rounded-2xl bg-green-50 p-4 ring-1 ring-green-100">
+            <div className="rounded-2xl bg-green-50 p-5 ring-1 ring-green-100">
               <p className="text-sm text-green-800">Godkjent</p>
               <p className="mt-2 text-2xl font-bold text-green-900">
                 {approvedCount}
               </p>
+              <p className="mt-2 text-sm text-green-900/80">
+                {formatCurrency(totalApprovedValue)} kr godkjent
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-red-50 p-5 ring-1 ring-red-100">
+              <p className="text-sm text-red-800">Utløpt</p>
+              <p className="mt-2 text-2xl font-bold text-red-900">
+                {expiredCount}
+              </p>
+              <p className="mt-2 text-sm text-red-900/80">
+                Trenger oppfølging
+              </p>
             </div>
           </div>
 
-          <div className="mt-8 rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
-            <h2 className="text-lg font-semibold">Innstillinger</h2>
-            <p className="mt-2 text-sm text-neutral-600">
-              Her kan du justere bedriftsprofil, gyldighet på tilbud og AI-oppsett.
-            </p>
+          <div className="mt-8 grid gap-4 lg:grid-cols-4">
+            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+              <p className="text-sm text-neutral-500">Totalt antall tilbud</p>
+              <p className="mt-2 text-2xl font-bold">{totalOfferCount}</p>
+            </div>
 
-            <div className="mt-4">
-              <a
-                href="/settings"
-                className="inline-flex rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white"
-              >
-                Åpne innstillinger
-              </a>
+            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+              <p className="text-sm text-neutral-500">Total tilbudsverdi</p>
+              <p className="mt-2 text-2xl font-bold">
+                {formatCurrency(totalValueAll)} kr
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+              <p className="text-sm text-neutral-500">Godkjenningsrate</p>
+              <p className="mt-2 text-2xl font-bold">{approvalRate} %</p>
+            </div>
+
+            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+              <p className="text-sm text-neutral-500">Snittpris</p>
+              <p className="mt-2 text-2xl font-bold">
+                {formatCurrency(averageValue)} kr
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-8 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
+            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+              <h2 className="text-lg font-semibold">Oversikt</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Dette gir deg et raskt bilde av hvor du har penger på vei inn og
+                hvor du bør følge opp.
+              </p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                  <p className="text-sm text-neutral-500">Ute hos kunder</p>
+                  <p className="mt-2 text-xl font-bold">
+                    {formatCurrency(totalSentValue)} kr
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-500">
+                    Tilbud sendt, ikke godkjent enda
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                  <p className="text-sm text-neutral-500">Godkjent verdi</p>
+                  <p className="mt-2 text-xl font-bold">
+                    {formatCurrency(totalApprovedValue)} kr
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-500">
+                    Tilbud som allerede er landet
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+              <h2 className="text-lg font-semibold">Snarveier</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Gå rett til det du bruker mest.
+              </p>
+
+              <div className="mt-4 grid gap-3">
+                <a
+                  href="/offers/new"
+                  className="rounded-2xl bg-black px-4 py-3 text-center text-sm font-medium text-white"
+                >
+                  Lag nytt tilbud
+                </a>
+
+                <a
+                  href="/materials"
+                  className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
+                >
+                  Åpne materialdatabase
+                </a>
+
+                <a
+                  href="/settings"
+                  className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
+                >
+                  Åpne innstillinger
+                </a>
+              </div>
             </div>
           </div>
 
           <div className="mt-10">
-            <h2 className="text-lg font-semibold">Dine tilbud</h2>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Dine tilbud</h2>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Kundenavn ligger øverst, med pris, dato, status og jobbtittel
+                  under.
+                </p>
+              </div>
+            </div>
 
             {typedOffers.length === 0 ? (
-              <p className="mt-4 text-neutral-500">Ingen tilbud enda</p>
+              <div className="mt-4 rounded-2xl bg-neutral-50 p-6 ring-1 ring-black/5">
+                <p className="text-neutral-500">Ingen tilbud enda.</p>
+              </div>
             ) : (
               <div className="mt-4 space-y-3">
                 {typedOffers.map((offer) => {
@@ -224,15 +386,15 @@ export default async function DashboardPage() {
                   return (
                     <div
                       key={offer.id}
-                      className="rounded-xl border p-4 transition hover:bg-neutral-50"
+                      className="rounded-2xl border border-neutral-200 bg-white p-4 transition hover:bg-neutral-50"
                     >
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <a href={`/offers/${offer.id}`} className="min-w-0 flex-1">
-                          <p className="truncate font-medium">
+                          <p className="truncate text-lg font-semibold">
                             {getCustomerName(offer)}
                           </p>
 
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
                             <span>{formatCurrency(offer.total)} kr</span>
                             <span>•</span>
                             <span>{formatDate(offer.created_at)}</span>
@@ -244,7 +406,7 @@ export default async function DashboardPage() {
                             ) : null}
                           </div>
 
-                          <p className="mt-1 text-sm text-neutral-500">
+                          <p className="mt-2 text-sm text-neutral-500">
                             Gyldig til: {formatDate(offer.valid_until)}
                           </p>
 
@@ -255,7 +417,7 @@ export default async function DashboardPage() {
                           ) : null}
                         </a>
 
-                        <div className="flex flex-col items-start gap-3 sm:items-end">
+                        <div className="flex flex-col items-start gap-3 lg:items-end">
                           <span
                             className={`rounded-lg px-3 py-1 text-sm font-medium ${getStatusClasses(
                               displayStatus

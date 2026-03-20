@@ -62,6 +62,23 @@ function calculateLineTotal(quantity: string, unitPrice: number) {
   return parseNumber(quantity) * unitPrice;
 }
 
+function formatSuggestionSummary(suggestion: AiSuggestion) {
+  if (suggestion.priceType === "hourly") {
+    return `${formatCurrency(suggestion.hourlyRate)} kr/t × ${suggestion.hours} t + ${formatCurrency(suggestion.materials)} kr materialer`;
+  }
+
+  return `${formatCurrency(suggestion.fixedPrice)} kr fastpris + ${formatCurrency(suggestion.materials)} kr materialer`;
+}
+
+const QUICK_INPUTS = [
+  "Bytte 2 vinduer",
+  "Sette opp lettvegg 10 m²",
+  "Skifte ytterdør",
+  "Legge 20 m² laminatgulv",
+  "Montere kjøkkenbenk og tilpasning",
+  "Skifte kledning på én vegg",
+];
+
 export default function NewOfferPage() {
   const [customer, setCustomer] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -79,6 +96,7 @@ export default function NewOfferPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiSuggestion, setAiSuggestion] = useState<AiSuggestion | null>(null);
+  const [lastAppliedAiInput, setLastAppliedAiInput] = useState("");
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -161,9 +179,36 @@ export default function NewOfferPage() {
     return { subtotal, vat, total };
   }, [priceType, fixedPrice, hourlyRate, hours, materials, vatEnabled]);
 
+  const selectedMaterialsCount = selectedMaterials.length;
+
+  function applyAiSuggestion(suggestion: AiSuggestion) {
+    setTitle(suggestion.title);
+    setDescription(suggestion.description);
+
+    if (suggestion.priceType === "hourly") {
+      setPriceType("hourly");
+      setHourlyRate(String(suggestion.hourlyRate || ""));
+      setHours(String(suggestion.hours || ""));
+      setFixedPrice("");
+    } else {
+      setPriceType("fixed");
+      setFixedPrice(String(suggestion.fixedPrice || ""));
+      setHourlyRate("");
+      setHours("");
+    }
+
+    if (!useSavedMaterials || selectedMaterials.length === 0) {
+      setMaterials(String(suggestion.materials || ""));
+    }
+
+    setLastAppliedAiInput(aiInput.trim());
+  }
+
   async function handleGenerateText() {
     setAiError("");
     setAiSuggestion(null);
+    setSaveError("");
+    setSaveSuccess("");
 
     if (!aiInput.trim()) {
       setAiError("Skriv kort hva jobben gjelder først.");
@@ -200,29 +245,33 @@ export default function NewOfferPage() {
       };
 
       setAiSuggestion(suggestion);
-      setTitle(suggestion.title);
-      setDescription(suggestion.description);
-
-      if (suggestion.priceType === "hourly") {
-        setPriceType("hourly");
-        setHourlyRate(String(suggestion.hourlyRate || ""));
-        setHours(String(suggestion.hours || ""));
-        setFixedPrice("");
-      } else {
-        setPriceType("fixed");
-        setFixedPrice(String(suggestion.fixedPrice || ""));
-        setHourlyRate("");
-        setHours("");
-      }
-
-      if (!useSavedMaterials || selectedMaterials.length === 0) {
-        setMaterials(String(suggestion.materials || ""));
-      }
+      applyAiSuggestion(suggestion);
     } catch (error) {
       console.error(error);
       setAiError("Kunne ikke generere forslag.");
     } finally {
       setIsGenerating(false);
+    }
+  }
+
+  function handleQuickInputClick(value: string) {
+    setAiInput(value);
+    setAiError("");
+  }
+
+  function handleClearAiDraft() {
+    setAiSuggestion(null);
+    setLastAppliedAiInput("");
+    setAiError("");
+    setAiInput("");
+    setTitle("");
+    setDescription("");
+    setPriceType("fixed");
+    setFixedPrice("");
+    setHourlyRate("");
+    setHours("");
+    if (!useSavedMaterials || selectedMaterials.length === 0) {
+      setMaterials("");
     }
   }
 
@@ -391,6 +440,31 @@ export default function NewOfferPage() {
           </a>
         </div>
 
+        <div className="mb-6 rounded-3xl border border-black bg-black px-5 py-5 text-white shadow-sm sm:px-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-sm font-medium text-white/70">1-klikk tilbud</p>
+              <h2 className="mt-1 text-2xl font-bold tracking-tight">
+                Skriv jobben kort. Få ferdig forslag med én gang.
+              </h2>
+              <p className="mt-2 text-sm text-white/75">
+                Dette fyller inn tittel, beskrivelse og prisoppsett automatisk.
+                Materialer fra databasen legger du fortsatt på under hvis du vil
+                gjøre tilbudet mer presist.
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 px-4 py-3 text-sm">
+              <p className="text-white/70">Status</p>
+              <p className="mt-1 font-medium">
+                {lastAppliedAiInput
+                  ? `Sist generert fra: "${lastAppliedAiInput}"`
+                  : "Ingen AI-forslag brukt enda"}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
             <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
@@ -457,6 +531,19 @@ export default function NewOfferPage() {
                   className="mt-3 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
                 />
 
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {QUICK_INPUTS.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => handleQuickInputClick(item)}
+                      className="rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700"
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row">
                   <button
                     type="button"
@@ -468,6 +555,14 @@ export default function NewOfferPage() {
                       ? "Genererer..."
                       : "Generer komplett forslag"}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={handleClearAiDraft}
+                    className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm font-medium text-neutral-900"
+                  >
+                    Tøm forslag
+                  </button>
                 </div>
 
                 {aiError ? (
@@ -476,12 +571,30 @@ export default function NewOfferPage() {
 
                 {aiSuggestion ? (
                   <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-black/5">
-                    <p className="text-sm font-medium">AI foreslår</p>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-sm font-medium">AI foreslår</p>
+                        <p className="mt-1 text-sm text-neutral-500">
+                          Forslaget er allerede lagt inn i feltene under.
+                        </p>
+                      </div>
+
+                      <div className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                        Lagt inn automatisk
+                      </div>
+                    </div>
 
                     <div className="mt-3 rounded-xl bg-neutral-50 p-3">
                       <p className="text-xs text-neutral-500">Tittel</p>
                       <p className="mt-1 font-medium">
                         {aiSuggestion.title || "-"}
+                      </p>
+                    </div>
+
+                    <div className="mt-3 rounded-xl bg-neutral-50 p-3">
+                      <p className="text-xs text-neutral-500">Oppsummering</p>
+                      <p className="mt-1 text-sm font-medium">
+                        {formatSuggestionSummary(aiSuggestion)}
                       </p>
                     </div>
 
@@ -526,6 +639,12 @@ export default function NewOfferPage() {
                           </p>
                         </div>
                       )}
+                    </div>
+
+                    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      Materialdatabasen er fortsatt det mest presise grunnlaget.
+                      Legg gjerne til faktiske materialer under for å få bedre
+                      kalkyle.
                     </div>
                   </div>
                 ) : null}
@@ -872,8 +991,17 @@ export default function NewOfferPage() {
 
               <div className="mt-4 rounded-2xl bg-neutral-50 p-4">
                 <p className="text-sm text-neutral-500">Valgte materialer</p>
-                <p className="mt-1 font-medium">{selectedMaterials.length} stk</p>
+                <p className="mt-1 font-medium">{selectedMaterialsCount} stk</p>
               </div>
+
+              {aiSuggestion ? (
+                <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 p-4">
+                  <p className="text-sm text-green-700">AI-forslag brukt</p>
+                  <p className="mt-1 text-sm font-medium text-green-900">
+                    {formatSuggestionSummary(aiSuggestion)}
+                  </p>
+                </div>
+              ) : null}
 
               <div className="mt-4 space-y-3 rounded-2xl bg-neutral-100 p-4">
                 <div className="flex items-center justify-between text-sm">
