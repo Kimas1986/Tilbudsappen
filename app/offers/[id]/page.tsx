@@ -10,6 +10,8 @@ type OfferMaterial = {
   unit: string | null;
   quantity: number | null;
   unit_price: number | null;
+  waste_percent: number | null;
+  markup_percent: number | null;
   line_total: number | null;
 };
 
@@ -51,10 +53,33 @@ function formatDate(value: string | null) {
   }
 }
 
-function formatCurrency(value: number | null) {
+function formatCurrency(value: number | null | undefined) {
   return new Intl.NumberFormat("no-NO", {
     maximumFractionDigits: 0,
   }).format(value || 0);
+}
+
+function toNumber(value: number | null | undefined) {
+  return Number(value || 0);
+}
+
+function calculateEstimatedCostPerUnit(item: OfferMaterial) {
+  const unitPrice = toNumber(item.unit_price);
+  const wastePercent = toNumber(item.waste_percent);
+  const markupPercent = toNumber(item.markup_percent);
+
+  const wasteFactor = 1 + wastePercent / 100;
+  const markupFactor = 1 + markupPercent / 100;
+
+  if (wasteFactor <= 0 || markupFactor <= 0) {
+    return unitPrice;
+  }
+
+  return unitPrice / wasteFactor / markupFactor;
+}
+
+function calculateEstimatedCostTotal(item: OfferMaterial) {
+  return calculateEstimatedCostPerUnit(item) * toNumber(item.quantity);
 }
 
 export default async function OfferPage({
@@ -86,7 +111,9 @@ export default async function OfferPage({
 
   const { data: offerMaterials, error: offerMaterialsError } = await supabase
     .from("offer_materials")
-    .select("id, material_name, supplier, unit, quantity, unit_price, line_total")
+    .select(
+      "id, material_name, supplier, unit, quantity, unit_price, waste_percent, markup_percent, line_total"
+    )
     .eq("offer_id", offer.id)
     .eq("user_id", user.id)
     .order("created_at", { ascending: true });
@@ -96,6 +123,18 @@ export default async function OfferPage({
   }
 
   const materials = (offerMaterials as OfferMaterial[] | null) || [];
+
+  const estimatedCostTotal = materials.reduce(
+    (sum, item) => sum + calculateEstimatedCostTotal(item),
+    0
+  );
+
+  const materialsSalesTotal = materials.reduce(
+    (sum, item) => sum + toNumber(item.line_total),
+    0
+  );
+
+  const estimatedMaterialsProfit = materialsSalesTotal - estimatedCostTotal;
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const publicUrl = `${baseUrl}/t/${offer.share_token}`;
@@ -172,51 +211,111 @@ export default async function OfferPage({
               </p>
             ) : (
               <div className="mt-4 space-y-3">
-                {materials.map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5"
-                  >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium">
-                          {item.material_name || "Materiale"}
-                        </p>
+                {materials.map((item) => {
+                  const estimatedCostPerUnit = calculateEstimatedCostPerUnit(item);
+                  const estimatedCostLine = calculateEstimatedCostTotal(item);
+                  const salesLine = toNumber(item.line_total);
+                  const lineProfit = salesLine - estimatedCostLine;
 
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
-                          <span>{item.supplier || "Ukjent leverandør"}</span>
-                          <span>•</span>
-                          <span>{item.unit || "stk"}</span>
-                        </div>
-                      </div>
-
-                      <div className="grid min-w-[240px] gap-2 text-sm sm:grid-cols-3">
-                        <div className="rounded-xl bg-white p-3">
-                          <p className="text-neutral-500">Antall</p>
-                          <p className="mt-1 font-medium">
-                            {item.quantity || 0} {item.unit || "stk"}
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5"
+                    >
+                      <div className="flex flex-col gap-4">
+                        <div className="min-w-0">
+                          <p className="font-medium">
+                            {item.material_name || "Materiale"}
                           </p>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+                            <span>{item.supplier || "Ukjent leverandør"}</span>
+                            <span>•</span>
+                            <span>{item.unit || "stk"}</span>
+                          </div>
                         </div>
 
-                        <div className="rounded-xl bg-white p-3">
-                          <p className="text-neutral-500">Enhetspris</p>
-                          <p className="mt-1 font-medium">
-                            {formatCurrency(item.unit_price)} kr
-                          </p>
-                        </div>
+                        <div className="grid gap-2 text-sm sm:grid-cols-3 lg:grid-cols-6">
+                          <div className="rounded-xl bg-white p-3">
+                            <p className="text-neutral-500">Antall</p>
+                            <p className="mt-1 font-medium">
+                              {item.quantity || 0} {item.unit || "stk"}
+                            </p>
+                          </div>
 
-                        <div className="rounded-xl bg-white p-3">
-                          <p className="text-neutral-500">Linjesum</p>
-                          <p className="mt-1 font-medium">
-                            {formatCurrency(item.line_total)} kr
-                          </p>
+                          <div className="rounded-xl bg-white p-3">
+                            <p className="text-neutral-500">Salgspris/enhet</p>
+                            <p className="mt-1 font-medium">
+                              {formatCurrency(item.unit_price)} kr
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl bg-white p-3">
+                            <p className="text-neutral-500">Anslått kost/enhet</p>
+                            <p className="mt-1 font-medium">
+                              {formatCurrency(estimatedCostPerUnit)} kr
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl bg-white p-3">
+                            <p className="text-neutral-500">Linjesum</p>
+                            <p className="mt-1 font-medium">
+                              {formatCurrency(item.line_total)} kr
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl bg-white p-3">
+                            <p className="text-neutral-500">Anslått kost total</p>
+                            <p className="mt-1 font-medium">
+                              {formatCurrency(estimatedCostLine)} kr
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl bg-white p-3">
+                            <p className="text-neutral-500">Fortjeneste</p>
+                            <p className="mt-1 font-medium">
+                              {formatCurrency(lineProfit)} kr
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-4">
+            <p className="text-lg font-semibold text-green-900">
+              Intern materialøkonomi
+            </p>
+            <p className="mt-1 text-sm text-green-800">
+              Kun synlig for deg. Vises ikke til kunde eller i PDF.
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl bg-white p-4">
+                <p className="text-sm text-neutral-500">Materialer ut</p>
+                <p className="mt-1 text-lg font-bold">
+                  {formatCurrency(materialsSalesTotal)} kr
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-white p-4">
+                <p className="text-sm text-neutral-500">Anslått kost</p>
+                <p className="mt-1 text-lg font-bold">
+                  {formatCurrency(estimatedCostTotal)} kr
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-white p-4">
+                <p className="text-sm text-neutral-500">Anslått fortjeneste</p>
+                <p className="mt-1 text-lg font-bold">
+                  {formatCurrency(estimatedMaterialsProfit)} kr
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="mt-6 space-y-2 rounded-2xl bg-neutral-100 p-4">
