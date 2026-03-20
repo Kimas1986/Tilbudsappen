@@ -99,7 +99,10 @@ function formatDate(value: string | null | undefined) {
   }
 }
 
-function getCustomerName(customers: OfferCustomer, fallback?: string | null) {
+function getCustomerName(
+  customers: OfferCustomer | undefined,
+  fallback?: string | null
+) {
   if (Array.isArray(customers)) {
     return customers[0]?.name || fallback || "-";
   }
