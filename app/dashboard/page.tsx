@@ -7,6 +7,11 @@ type OfferRow = {
   total: number | null;
   subtotal: number | null;
   vat_amount: number | null;
+  materials_cost: number | null;
+  price_type: string | null;
+  fixed_price: number | null;
+  hourly_rate: number | null;
+  hours: number | null;
   status: string;
   description: string | null;
   created_at: string | null;
@@ -21,6 +26,19 @@ type OfferRow = {
       }[]
     | null;
 };
+
+type OfferMaterialRow = {
+  offer_id: string;
+  quantity: number | null;
+  unit_price: number | null;
+  waste_percent: number | null;
+  markup_percent: number | null;
+  line_total: number | null;
+};
+
+function toNumber(value: number | null | undefined) {
+  return Number(value || 0);
+}
 
 function isExpired(validUntil: string | null) {
   if (!validUntil) return false;
@@ -79,7 +97,14 @@ function getStatusCount(offers: OfferRow[], status: string) {
 function sumOfferValues(
   offers: OfferRow[],
   statuses?: string[],
-  field: "total" | "subtotal" | "vat_amount" = "total"
+  field:
+    | "total"
+    | "subtotal"
+    | "vat_amount"
+    | "materials_cost"
+    | "fixed_price"
+    | "hourly_rate"
+    | "hours" = "total"
 ) {
   return offers.reduce((sum, offer) => {
     const displayStatus = getDisplayStatus(offer);
@@ -114,6 +139,99 @@ function averageOfferValue(offers: OfferRow[]) {
 
   const total = offers.reduce((sum, offer) => sum + Number(offer.total || 0), 0);
   return Math.round(total / offers.length);
+}
+
+function getOfferLaborValue(offer: OfferRow) {
+  if (offer.price_type === "hourly") {
+    return toNumber(offer.hourly_rate) * toNumber(offer.hours);
+  }
+
+  return toNumber(offer.fixed_price);
+}
+
+function calculateEstimatedCostPerUnit(item: OfferMaterialRow) {
+  const unitPrice = toNumber(item.unit_price);
+  const wastePercent = toNumber(item.waste_percent);
+  const markupPercent = toNumber(item.markup_percent);
+
+  const wasteFactor = 1 + wastePercent / 100;
+  const markupFactor = 1 + markupPercent / 100;
+
+  if (wasteFactor <= 0 || markupFactor <= 0) {
+    return unitPrice;
+  }
+
+  return unitPrice / wasteFactor / markupFactor;
+}
+
+function calculateEstimatedCostTotal(item: OfferMaterialRow) {
+  return calculateEstimatedCostPerUnit(item) * toNumber(item.quantity);
+}
+
+function groupMaterialMetricsByOffer(materials: OfferMaterialRow[]) {
+  const result = new Map<
+    string,
+    {
+      sales: number;
+      estimatedCost: number;
+      profit: number;
+    }
+  >();
+
+  for (const item of materials) {
+    const sales = toNumber(item.line_total);
+    const estimatedCost = calculateEstimatedCostTotal(item);
+    const profit = sales - estimatedCost;
+
+    const existing = result.get(item.offer_id) || {
+      sales: 0,
+      estimatedCost: 0,
+      profit: 0,
+    };
+
+    result.set(item.offer_id, {
+      sales: existing.sales + sales,
+      estimatedCost: existing.estimatedCost + estimatedCost,
+      profit: existing.profit + profit,
+    });
+  }
+
+  return result;
+}
+
+function getTopCustomerRows(offers: OfferRow[]) {
+  const customerMap = new Map<
+    string,
+    {
+      name: string;
+      count: number;
+      total: number;
+      approvedTotal: number;
+    }
+  >();
+
+  for (const offer of offers) {
+    const name = getCustomerName(offer);
+    const existing = customerMap.get(name) || {
+      name,
+      count: 0,
+      total: 0,
+      approvedTotal: 0,
+    };
+
+    existing.count += 1;
+    existing.total += toNumber(offer.total);
+
+    if (getDisplayStatus(offer) === "approved") {
+      existing.approvedTotal += toNumber(offer.total);
+    }
+
+    customerMap.set(name, existing);
+  }
+
+  return Array.from(customerMap.values())
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 5);
 }
 
 export default async function DashboardPage() {
@@ -155,18 +273,34 @@ export default async function DashboardPage() {
     redirect("/dashboard");
   }
 
-  const { data: offers, error } = await supabase
-    .from("offers")
-    .select(
-      "id, title, total, subtotal, vat_amount, status, description, created_at, valid_until, approved_at, customers(name)"
-    )
-    .order("created_at", { ascending: false });
+  const [{ data: offers, error }, { data: offerMaterials, error: materialsError }] =
+    await Promise.all([
+      supabase
+        .from("offers")
+        .select(
+          "id, title, total, subtotal, vat_amount, materials_cost, price_type, fixed_price, hourly_rate, hours, status, description, created_at, valid_until, approved_at, customers(name)"
+        )
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("offer_materials")
+        .select(
+          "offer_id, quantity, unit_price, waste_percent, markup_percent, line_total"
+        )
+        .eq("user_id", user.id),
+    ]);
 
   if (error) {
     console.error("Feil ved henting av tilbud:", error);
   }
 
+  if (materialsError) {
+    console.error("Feil ved henting av materiallinjer:", materialsError);
+  }
+
   const typedOffers = (offers as OfferRow[] | null) || [];
+  const typedOfferMaterials = (offerMaterials as OfferMaterialRow[] | null) || [];
+
+  const materialMetricsByOffer = groupMaterialMetricsByOffer(typedOfferMaterials);
 
   const draftCount = getStatusCount(typedOffers, "draft");
   const sentCount = getStatusCount(typedOffers, "sent");
@@ -180,6 +314,48 @@ export default async function DashboardPage() {
   const totalDraftValue = sumOfferValues(typedOffers, ["draft"]);
   const approvalRate = calculateApprovalRate(typedOffers);
   const averageValue = averageOfferValue(typedOffers);
+
+  const totalLaborValue = typedOffers.reduce(
+    (sum, offer) => sum + getOfferLaborValue(offer),
+    0
+  );
+  const totalMaterialsRevenue = typedOffers.reduce(
+    (sum, offer) => sum + toNumber(offer.materials_cost),
+    0
+  );
+
+  const totalEstimatedMaterialCost = Array.from(materialMetricsByOffer.values()).reduce(
+    (sum, item) => sum + item.estimatedCost,
+    0
+  );
+  const totalEstimatedMaterialProfit = Array.from(materialMetricsByOffer.values()).reduce(
+    (sum, item) => sum + item.profit,
+    0
+  );
+  const approvedEstimatedMaterialProfit = typedOffers.reduce((sum, offer) => {
+    if (getDisplayStatus(offer) !== "approved") {
+      return sum;
+    }
+
+    const metrics = materialMetricsByOffer.get(offer.id);
+    return sum + (metrics?.profit || 0);
+  }, 0);
+
+  const sentEstimatedMaterialProfit = typedOffers.reduce((sum, offer) => {
+    if (getDisplayStatus(offer) !== "sent") {
+      return sum;
+    }
+
+    const metrics = materialMetricsByOffer.get(offer.id);
+    return sum + (metrics?.profit || 0);
+  }, 0);
+
+  const materialMarginPercent =
+    totalMaterialsRevenue > 0
+      ? Math.round((totalEstimatedMaterialProfit / totalMaterialsRevenue) * 100)
+      : 0;
+
+  const topCustomers = getTopCustomerRows(typedOffers);
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -197,8 +373,7 @@ export default async function DashboardPage() {
               </p>
               <p className="mt-4 max-w-2xl text-sm text-neutral-600">
                 Her ser du status på tilbudene dine, hvor mye som ligger ute,
-                hva som er godkjent og hva som begynner å bygge seg opp i
-                pipeline.
+                hva som er godkjent og hvordan materialøkonomien utvikler seg.
               </p>
             </div>
 
@@ -301,12 +476,12 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <div className="mt-8 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
+          <div className="mt-8 grid gap-4 lg:grid-cols-2">
             <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
-              <h2 className="text-lg font-semibold">Oversikt</h2>
+              <h2 className="text-lg font-semibold">Omsetning og pipeline</h2>
               <p className="mt-2 text-sm text-neutral-600">
-                Dette gir deg et raskt bilde av hvor du har penger på vei inn og
-                hvor du bør følge opp.
+                Rask oversikt over hva som er ute, hva som er landet, og hva som
+                fortsatt ligger i produksjon.
               </p>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -329,7 +504,128 @@ export default async function DashboardPage() {
                     Tilbud som allerede er landet
                   </p>
                 </div>
+
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                  <p className="text-sm text-neutral-500">Arbeidsverdi totalt</p>
+                  <p className="mt-2 text-xl font-bold">
+                    {formatCurrency(totalLaborValue)} kr
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-500">
+                    Fastpris/timearbeid ekskl. materialer
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                  <p className="text-sm text-neutral-500">Materialer totalt</p>
+                  <p className="mt-2 text-xl font-bold">
+                    {formatCurrency(totalMaterialsRevenue)} kr
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-500">
+                    Sum materialkost ut mot kunde
+                  </p>
+                </div>
               </div>
+            </div>
+
+            <div className="rounded-2xl bg-green-50 p-5 ring-1 ring-green-100">
+              <h2 className="text-lg font-semibold text-green-900">
+                Intern fortjenesteoversikt
+              </h2>
+              <p className="mt-2 text-sm text-green-800">
+                Dette bygger på materiallinjene dine og anslått kost basert på
+                grunnpris, svinn og påslag.
+              </p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-sm text-neutral-500">
+                    Materialer ut til kunde
+                  </p>
+                  <p className="mt-2 text-xl font-bold">
+                    {formatCurrency(totalMaterialsRevenue)} kr
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-sm text-neutral-500">Anslått materialkost</p>
+                  <p className="mt-2 text-xl font-bold">
+                    {formatCurrency(totalEstimatedMaterialCost)} kr
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-sm text-neutral-500">
+                    Anslått materialfortjeneste
+                  </p>
+                  <p className="mt-2 text-xl font-bold">
+                    {formatCurrency(totalEstimatedMaterialProfit)} kr
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-sm text-neutral-500">Materialmargin</p>
+                  <p className="mt-2 text-xl font-bold">
+                    {materialMarginPercent} %
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-sm text-neutral-500">
+                    Fortjeneste i godkjente tilbud
+                  </p>
+                  <p className="mt-2 text-xl font-bold">
+                    {formatCurrency(approvedEstimatedMaterialProfit)} kr
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-white p-4">
+                  <p className="text-sm text-neutral-500">
+                    Fortjeneste ute hos kunder
+                  </p>
+                  <p className="mt-2 text-xl font-bold">
+                    {formatCurrency(sentEstimatedMaterialProfit)} kr
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 grid gap-4 lg:grid-cols-[1fr_0.75fr]">
+            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+              <h2 className="text-lg font-semibold">Topp kunder</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Hvem som har størst tilbudsverdi hos deg akkurat nå.
+              </p>
+
+              {topCustomers.length === 0 ? (
+                <p className="mt-4 text-sm text-neutral-500">
+                  Ingen kundedata enda.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {topCustomers.map((customer, index) => (
+                    <div
+                      key={`${customer.name}-${index}`}
+                      className="flex items-center justify-between rounded-2xl bg-white p-4 ring-1 ring-black/5"
+                    >
+                      <div>
+                        <p className="font-medium">{customer.name}</p>
+                        <p className="mt-1 text-sm text-neutral-500">
+                          {customer.count} tilbud •{" "}
+                          {formatCurrency(customer.approvedTotal)} kr godkjent
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-sm text-neutral-500">Total verdi</p>
+                        <p className="mt-1 font-bold">
+                          {formatCurrency(customer.total)} kr
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
@@ -382,6 +678,8 @@ export default async function DashboardPage() {
               <div className="mt-4 space-y-3">
                 {typedOffers.map((offer) => {
                   const displayStatus = getDisplayStatus(offer);
+                  const materialMetrics = materialMetricsByOffer.get(offer.id);
+                  const offerMaterialProfit = materialMetrics?.profit || 0;
 
                   return (
                     <div
@@ -415,6 +713,17 @@ export default async function DashboardPage() {
                               {offer.description}
                             </p>
                           ) : null}
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
+                              Materialer: {formatCurrency(offer.materials_cost)} kr
+                            </span>
+
+                            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                              Anslått materialfortjeneste:{" "}
+                              {formatCurrency(offerMaterialProfit)} kr
+                            </span>
+                          </div>
                         </a>
 
                         <div className="flex flex-col items-start gap-3 lg:items-end">

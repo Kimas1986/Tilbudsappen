@@ -23,6 +23,21 @@ type MaterialRow = {
   pricing_mode: string;
 };
 
+type MaterialTemplateItem = {
+  id: string;
+  materialId: string;
+  quantity: number;
+  material: MaterialRow;
+};
+
+type MaterialTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string | null;
+  items: MaterialTemplateItem[];
+};
+
 type SelectedMaterial = {
   materialId: string;
   name: string;
@@ -104,11 +119,14 @@ export default function NewOfferPage() {
   const [offerId, setOfferId] = useState<string | null>(null);
 
   const [materialsCatalog, setMaterialsCatalog] = useState<MaterialRow[]>([]);
+  const [materialTemplates, setMaterialTemplates] = useState<MaterialTemplate[]>([]);
   const [materialsLoading, setMaterialsLoading] = useState(true);
   const [materialsError, setMaterialsError] = useState("");
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
   const [useSavedMaterials, setUseSavedMaterials] = useState(true);
+  const [templateMessage, setTemplateMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -132,6 +150,7 @@ export default function NewOfferPage() {
         if (!active) return;
 
         setMaterialsCatalog(Array.isArray(data.materials) ? data.materials : []);
+        setMaterialTemplates(Array.isArray(data.templates) ? data.templates : []);
       } catch (error) {
         console.error(error);
 
@@ -151,6 +170,10 @@ export default function NewOfferPage() {
       active = false;
     };
   }, []);
+
+  const selectedTemplate = useMemo(() => {
+    return materialTemplates.find((template) => template.id === selectedTemplateId) || null;
+  }, [materialTemplates, selectedTemplateId]);
 
   const calculatedMaterialCost = useMemo(() => {
     return selectedMaterials.reduce((sum, item) => sum + item.lineTotal, 0);
@@ -275,6 +298,22 @@ export default function NewOfferPage() {
     }
   }
 
+  function buildSelectedMaterial(material: MaterialRow, quantity: string) {
+    const unitPrice = calculateMaterialUnitPrice(material);
+
+    return {
+      materialId: material.id,
+      name: material.name,
+      supplier: material.supplier,
+      unit: material.unit,
+      quantity,
+      unitPrice,
+      wastePercent: Number(material.waste_percent || 0),
+      markupPercent: Number(material.markup_percent || 0),
+      lineTotal: calculateLineTotal(quantity, unitPrice),
+    };
+  }
+
   function handleAddMaterial() {
     if (!selectedMaterialId) return;
 
@@ -291,25 +330,72 @@ export default function NewOfferPage() {
       return;
     }
 
-    const unitPrice = calculateMaterialUnitPrice(material);
-
-    setSelectedMaterials((prev) => [
-      ...prev,
-      {
-        materialId: material.id,
-        name: material.name,
-        supplier: material.supplier,
-        unit: material.unit,
-        quantity: "1",
-        unitPrice,
-        wastePercent: Number(material.waste_percent || 0),
-        markupPercent: Number(material.markup_percent || 0),
-        lineTotal: calculateLineTotal("1", unitPrice),
-      },
-    ]);
+    setSelectedMaterials((prev) => [...prev, buildSelectedMaterial(material, "1")]);
 
     setSelectedMaterialId("");
     setUseSavedMaterials(true);
+    setTemplateMessage("");
+  }
+
+  function handleApplyTemplate() {
+    if (!selectedTemplate) return;
+
+    const templateItems = Array.isArray(selectedTemplate.items)
+      ? selectedTemplate.items
+      : [];
+
+    if (templateItems.length === 0) {
+      setTemplateMessage("Denne malen har ingen materiallinjer.");
+      return;
+    }
+
+    let addedCount = 0;
+    let skippedCount = 0;
+
+    setSelectedMaterials((prev) => {
+      const next = [...prev];
+
+      for (const templateItem of templateItems) {
+        const material = templateItem.material;
+
+        if (!material?.id) {
+          skippedCount += 1;
+          continue;
+        }
+
+        const alreadyExists = next.some(
+          (item) => item.materialId === material.id
+        );
+
+        if (alreadyExists) {
+          skippedCount += 1;
+          continue;
+        }
+
+        next.push(
+          buildSelectedMaterial(material, String(templateItem.quantity || 1))
+        );
+        addedCount += 1;
+      }
+
+      return next;
+    });
+
+    setUseSavedMaterials(true);
+
+    if (addedCount > 0 && skippedCount > 0) {
+      setTemplateMessage(
+        `Mal lagt inn. ${addedCount} materialer lagt til, ${skippedCount} hoppet over fordi de allerede finnes i tilbudet.`
+      );
+      return;
+    }
+
+    if (addedCount > 0) {
+      setTemplateMessage(`Mal lagt inn. ${addedCount} materialer lagt til.`);
+      return;
+    }
+
+    setTemplateMessage("Ingen nye materialer ble lagt til fra malen.");
   }
 
   function handleMaterialQuantityChange(materialId: string, quantity: string) {
@@ -449,8 +535,8 @@ export default function NewOfferPage() {
               </h2>
               <p className="mt-2 text-sm text-white/75">
                 Dette fyller inn tittel, beskrivelse og prisoppsett automatisk.
-                Materialer fra databasen legger du fortsatt på under hvis du vil
-                gjøre tilbudet mer presist.
+                Materialer fra databasen eller ferdige maler legger du på under
+                hvis du vil gjøre tilbudet mer presist.
               </p>
             </div>
 
@@ -643,8 +729,8 @@ export default function NewOfferPage() {
 
                     <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                       Materialdatabasen er fortsatt det mest presise grunnlaget.
-                      Legg gjerne til faktiske materialer under for å få bedre
-                      kalkyle.
+                      Legg gjerne til faktiske materialer eller en ferdig mal
+                      under for å få bedre kalkyle.
                     </div>
                   </div>
                 ) : null}
@@ -678,12 +764,78 @@ export default function NewOfferPage() {
               <div className="mb-4">
                 <h2 className="text-lg font-semibold">Materialer</h2>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Velg fra materialdatabasen og fyll inn antall. Materialkost
-                  summeres automatisk inn i tilbudet.
+                  Velg fra materialdatabasen, eller bruk ferdige materialmaler
+                  for å fylle inn flere linjer med ett klikk.
                 </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <label className="block text-sm font-medium">
+                      Materialmal
+                    </label>
+                    <p className="mt-1 text-sm text-neutral-500">
+                      Velg en ferdig pakke hvis jobben ligner noe du gjør ofte.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                    <select
+                      value={selectedTemplateId}
+                      onChange={(e) => {
+                        setSelectedTemplateId(e.target.value);
+                        setTemplateMessage("");
+                      }}
+                      className="rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                      disabled={materialsLoading}
+                    >
+                      <option value="">
+                        {materialsLoading
+                          ? "Laster materialmaler..."
+                          : "Velg materialmal"}
+                      </option>
+
+                      {materialTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={handleApplyTemplate}
+                      disabled={!selectedTemplateId}
+                      className="rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+                    >
+                      Legg inn mal
+                    </button>
+                  </div>
+
+                  {selectedTemplate ? (
+                    <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                      <p className="font-medium">{selectedTemplate.name}</p>
+
+                      {selectedTemplate.description ? (
+                        <p className="mt-1 text-sm text-neutral-500">
+                          {selectedTemplate.description}
+                        </p>
+                      ) : null}
+
+                      <p className="mt-2 text-sm text-neutral-600">
+                        {selectedTemplate.items.length} materiallinjer i malen
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {templateMessage ? (
+                    <p className="text-sm text-green-700">{templateMessage}</p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
                 <select
                   value={selectedMaterialId}
                   onChange={(e) => setSelectedMaterialId(e.target.value)}
@@ -993,6 +1145,15 @@ export default function NewOfferPage() {
                 <p className="text-sm text-neutral-500">Valgte materialer</p>
                 <p className="mt-1 font-medium">{selectedMaterialsCount} stk</p>
               </div>
+
+              {selectedTemplate ? (
+                <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                  <p className="text-sm text-blue-700">Valgt materialmal</p>
+                  <p className="mt-1 text-sm font-medium text-blue-900">
+                    {selectedTemplate.name}
+                  </p>
+                </div>
+              ) : null}
 
               {aiSuggestion ? (
                 <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 p-4">
