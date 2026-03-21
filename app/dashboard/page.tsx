@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 type OfferRow = {
   id: string;
   title: string | null;
@@ -97,7 +100,12 @@ export default async function DashboardPage() {
 
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
+
+  if (userError) {
+    console.error("Feil ved henting av bruker på dashboard:", userError);
+  }
 
   if (!user) {
     redirect("/login");
