@@ -14,11 +14,12 @@ export async function createClient() {
         },
         setAll(cookiesToSet) {
           try {
-            for (const { name, value, options } of cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
-            }
+            });
           } catch {
-            // Ignoreres i server components der cookies ikke kan settes direkte
+            // Server Components kan ikke alltid skrive cookies.
+            // Middleware håndterer refresh av auth-cookies.
           }
         },
       },
