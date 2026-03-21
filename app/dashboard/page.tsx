@@ -67,17 +67,19 @@ function formatCurrency(value: number | null) {
 
 function formatDate(value: string | null) {
   if (!value) return "-";
-  return new Date(value).toLocaleDateString("no-NO");
+
+  try {
+    return new Date(value).toLocaleDateString("no-NO");
+  } catch {
+    return "-";
+  }
 }
 
 function getStatusCount(offers: OfferRow[], status: string) {
   return offers.filter((offer) => getDisplayStatus(offer) === status).length;
 }
 
-function sumOfferValues(
-  offers: OfferRow[],
-  statuses?: string[]
-) {
+function sumOfferValues(offers: OfferRow[], statuses?: string[]) {
   return offers.reduce((sum, offer) => {
     const displayStatus = getDisplayStatus(offer);
 
@@ -87,30 +89,6 @@ function sumOfferValues(
 
     return sum + Number(offer.total || 0);
   }, 0);
-}
-
-function averageOfferValue(offers: OfferRow[]) {
-  if (offers.length === 0) return 0;
-
-  const total = offers.reduce((sum, offer) => sum + Number(offer.total || 0), 0);
-  return Math.round(total / offers.length);
-}
-
-function calculateApprovalRate(offers: OfferRow[]) {
-  const sentOrApproved = offers.filter((offer) => {
-    const displayStatus = getDisplayStatus(offer);
-    return displayStatus === "sent" || displayStatus === "approved";
-  }).length;
-
-  const approved = offers.filter(
-    (offer) => getDisplayStatus(offer) === "approved"
-  ).length;
-
-  if (sentOrApproved === 0) {
-    return 0;
-  }
-
-  return Math.round((approved / sentOrApproved) * 100);
 }
 
 export default async function DashboardPage() {
@@ -170,46 +148,9 @@ export default async function DashboardPage() {
   const approvedCount = getStatusCount(typedOffers, "approved");
   const expiredCount = getStatusCount(typedOffers, "expired");
 
-  const totalOfferCount = typedOffers.length;
-  const totalValueAll = sumOfferValues(typedOffers);
   const totalSentValue = sumOfferValues(typedOffers, ["sent"]);
   const totalApprovedValue = sumOfferValues(typedOffers, ["approved"]);
   const totalDraftValue = sumOfferValues(typedOffers, ["draft"]);
-  const approvalRate = calculateApprovalRate(typedOffers);
-  const averageValue = averageOfferValue(typedOffers);
-
-  const customerMap = new Map<
-    string,
-    {
-      name: string;
-      totalValue: number;
-      approvedValue: number;
-      offerCount: number;
-    }
-  >();
-
-  for (const offer of typedOffers) {
-    const name = getCustomerName(offer);
-    const existing = customerMap.get(name) || {
-      name,
-      totalValue: 0,
-      approvedValue: 0,
-      offerCount: 0,
-    };
-
-    existing.totalValue += Number(offer.total || 0);
-    existing.offerCount += 1;
-
-    if (getDisplayStatus(offer) === "approved") {
-      existing.approvedValue += Number(offer.total || 0);
-    }
-
-    customerMap.set(name, existing);
-  }
-
-  const topCustomers = Array.from(customerMap.values())
-    .sort((a, b) => b.totalValue - a.totalValue)
-    .slice(0, 3);
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -227,7 +168,7 @@ export default async function DashboardPage() {
               </p>
               <p className="mt-4 max-w-2xl text-sm text-neutral-600">
                 Her ser du status på tilbudene dine, hva som ligger ute akkurat nå
-                og hvilke kunder som betyr mest.
+                og kan gå rett videre til tilbud, økonomi og materialer.
               </p>
             </div>
 
@@ -309,108 +250,6 @@ export default async function DashboardPage() {
                 Trenger oppfølging
               </p>
             </div>
-          </div>
-
-          <div className="mt-8 grid gap-4 lg:grid-cols-4">
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
-              <p className="text-sm text-neutral-500">Totalt antall tilbud</p>
-              <p className="mt-2 text-2xl font-bold">{totalOfferCount}</p>
-            </div>
-
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
-              <p className="text-sm text-neutral-500">Total tilbudsverdi</p>
-              <p className="mt-2 text-2xl font-bold">
-                {formatCurrency(totalValueAll)} kr
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
-              <p className="text-sm text-neutral-500">Godkjenningsrate</p>
-              <p className="mt-2 text-2xl font-bold">{approvalRate} %</p>
-            </div>
-
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
-              <p className="text-sm text-neutral-500">Snittpris</p>
-              <p className="mt-2 text-2xl font-bold">
-                {formatCurrency(averageValue)} kr
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-8 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-            <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
-              <h2 className="text-lg font-semibold">Topp kunder</h2>
-              <p className="mt-2 text-sm text-neutral-600">
-                Hvem som har størst tilbudsverdi hos deg akkurat nå.
-              </p>
-
-              {topCustomers.length === 0 ? (
-                <p className="mt-4 text-sm text-neutral-500">Ingen kunder enda.</p>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {topCustomers.map((customer) => (
-                    <div
-                      key={customer.name}
-                      className="rounded-2xl bg-white p-4 ring-1 ring-black/5"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0">
-                          <p className="font-medium">{customer.name}</p>
-                          <p className="mt-1 text-sm text-neutral-500">
-                            {customer.offerCount} tilbud •{" "}
-                            {formatCurrency(customer.approvedValue)} kr godkjent
-                          </p>
-                        </div>
-
-                        <div className="text-right">
-                          <p className="text-xs text-neutral-500">Total verdi</p>
-                          <p className="mt-1 font-bold">
-                            {formatCurrency(customer.totalValue)} kr
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
-              <h2 className="text-lg font-semibold">Snarveier</h2>
-              <p className="mt-2 text-sm text-neutral-600">
-                Gå rett til det du bruker mest.
-              </p>
-
-              <div className="mt-4 grid gap-3">
-                <a
-                  href="/offers/new"
-                  className="rounded-2xl bg-black px-4 py-3 text-center text-sm font-medium text-white"
-                >
-                  Lag nytt tilbud
-                </a>
-
-                <a
-                  href="/economy"
-                  className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
-                >
-                  Åpne økonomi
-                </a>
-
-                <a
-                  href="/materials"
-                  className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
-                >
-                  Åpne materialdatabase
-                </a>
-
-                <a
-                  href="/settings"
-                  className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
-                >
-                  Åpne innstillinger
-                </a>
-              </div>
-            </section>
           </div>
 
           <div className="mt-10">
