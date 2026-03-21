@@ -92,26 +92,11 @@ function getStatusLabel(status: string) {
 }
 
 function getStatusClasses(status: string) {
-  if (status === "approved") {
-    return "bg-green-100 text-green-800";
-  }
-
-  if (status === "draft") {
-    return "bg-yellow-100 text-yellow-800";
-  }
-
-  if (status === "sent") {
-    return "bg-blue-100 text-blue-800";
-  }
-
-  if (status === "rejected") {
-    return "bg-red-100 text-red-800";
-  }
-
-  if (status === "expired") {
-    return "bg-red-200 text-red-900";
-  }
-
+  if (status === "approved") return "bg-green-100 text-green-800";
+  if (status === "draft") return "bg-yellow-100 text-yellow-800";
+  if (status === "sent") return "bg-blue-100 text-blue-800";
+  if (status === "rejected") return "bg-red-100 text-red-800";
+  if (status === "expired") return "bg-red-200 text-red-900";
   return "bg-neutral-100 text-neutral-800";
 }
 
@@ -180,14 +165,14 @@ function getCustomerInfo(customers: CustomerRelation) {
   };
 }
 
-function buildOfferMaterialRows(
+function buildTemplateRows(
   materials: { material_id: string | null; quantity: number | null }[],
   userId: string,
   templateId: string
 ) {
   const validMaterials = materials.filter((item) => item.material_id);
 
-  const uniqueRows = Array.from(
+  return Array.from(
     new Map(
       validMaterials.map((item) => [
         item.material_id,
@@ -203,8 +188,12 @@ function buildOfferMaterialRows(
       ])
     ).values()
   );
+}
 
-  return uniqueRows;
+function addDays(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
 }
 
 export default async function OfferPage({
@@ -242,38 +231,151 @@ export default async function OfferPage({
       redirect("/login");
     }
 
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/invoices/create-from-offer`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Cookie: "",
-        },
-        body: JSON.stringify({
-          offerId: id,
-        }),
-        cache: "no-store",
-      }
-    );
+    const { data: existingInvoice, error: existingInvoiceError } = await supabase
+      .from("invoices")
+      .select("id")
+      .eq("offer_id", id)
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    const data = await response.json().catch(() => null);
-
-    if (!response.ok) {
-      const error =
-        typeof data?.error === "string"
-          ? data.error
-          : "Kunne ikke opprette faktura";
-      redirect(`/offers/${id}?error=${encodeURIComponent(error)}`);
+    if (existingInvoiceError) {
+      console.error("Feil ved oppslag av eksisterende faktura:", existingInvoiceError);
+      redirect(`/offers/${id}?error=Kunne+ikke+sjekke+eksisterende+faktura`);
     }
 
-    const invoiceId = String(data?.invoiceId || "").trim();
-
-    if (!invoiceId) {
-      redirect(`/offers/${id}?error=Kunne+ikke+finne+ny+faktura`);
+    if (existingInvoice?.id) {
+      redirect(`/invoices/${existingInvoice.id}`);
     }
 
-    redirect(`/invoices/${invoiceId}`);
+    const { data: sourceOffer, error: sourceOfferError } = await supabase
+      .from("offers")
+      .select(
+        `
+        id,
+        user_id,
+        customer_id,
+        title,
+        description,
+        status,
+        subtotal,
+        vat_amount,
+        total,
+        customers(name, email, phone)
+      `
+      )
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (sourceOfferError || !sourceOffer) {
+      console.error("Feil ved henting av tilbud for faktura:", sourceOfferError);
+      redirect(`/offers/${id}?error=Fant+ikke+tilbudet`);
+    }
+
+    if (sourceOffer.status !== "approved") {
+      redirect(`/offers/${id}?error=Faktura+kan+bare+opprettes+fra+godkjente+tilbud`);
+    }
+
+    const { data: sourceMaterials, error: sourceMaterialsError } = await supabase
+      .from("offer_materials")
+      .select(
+        "id, material_name, supplier, unit, quantity, unit_price, line_total"
+      )
+      .eq("offer_id", id)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
+
+    if (sourceMaterialsError) {
+      console.error("Feil ved henting av materiallinjer for faktura:", sourceMaterialsError);
+      redirect(`/offers/${id}?error=Kunne+ikke+hente+materiallinjer`);
+    }
+
+    const customerRelation = Array.isArray(sourceOffer.customers)
+      ? sourceOffer.customers[0] || null
+      : sourceOffer.customers || null;
+
+    const customerName = customerRelation?.name || "Kunde";
+    const invoiceTitle =
+      String(sourceOffer.title || "").trim() || `Faktura til ${customerName}`;
+    const invoiceDescription =
+      String(sourceOffer.description || "").trim() ||
+      "Faktura opprettet fra godkjent tilbud.";
+
+    const subtotal = toNumber(sourceOffer.subtotal);
+    const vatAmount = toNumber(sourceOffer.vat_amount);
+    const total = toNumber(sourceOffer.total);
+
+    const { data: createdInvoice, error: createdInvoiceError } = await supabase
+      .from("invoices")
+      .insert({
+        user_id: user.id,
+        offer_id: sourceOffer.id,
+        customer_id: sourceOffer.customer_id || null,
+        title: invoiceTitle,
+        description: invoiceDescription,
+        status: "draft",
+        subtotal,
+        vat_amount: vatAmount,
+        total,
+        due_date: addDays(14),
+      })
+      .select("id")
+      .single();
+
+    if (createdInvoiceError || !createdInvoice) {
+      console.error("Feil ved opprettelse av faktura:", createdInvoiceError);
+      redirect(`/offers/${id}?error=Kunne+ikke+opprette+faktura`);
+    }
+
+    const invoiceLineRows =
+      sourceMaterials && sourceMaterials.length > 0
+        ? sourceMaterials.map((item) => ({
+            invoice_id: createdInvoice.id,
+            user_id: user.id,
+            source_offer_material_id: item.id,
+            line_type: "item",
+            title: item.material_name || "Materiale",
+            description: item.supplier || null,
+            quantity:
+              Number.isFinite(Number(item.quantity)) && Number(item.quantity) > 0
+                ? Number(item.quantity)
+                : 1,
+            unit: item.unit || "stk",
+            unit_price: toNumber(item.unit_price),
+            line_total: toNumber(item.line_total),
+          }))
+        : [
+            {
+              invoice_id: createdInvoice.id,
+              user_id: user.id,
+              source_offer_material_id: null,
+              line_type: "item",
+              title: invoiceTitle,
+              description: invoiceDescription,
+              quantity: 1,
+              unit: "stk",
+              unit_price: subtotal,
+              line_total: subtotal,
+            },
+          ];
+
+    const { error: invoiceLinesError } = await supabase
+      .from("invoice_lines")
+      .insert(invoiceLineRows);
+
+    if (invoiceLinesError) {
+      console.error("Feil ved opprettelse av fakturalinjer:", invoiceLinesError);
+
+      await supabase
+        .from("invoices")
+        .delete()
+        .eq("id", createdInvoice.id)
+        .eq("user_id", user.id);
+
+      redirect(`/offers/${id}?error=Kunne+ikke+opprette+fakturalinjer`);
+    }
+
+    redirect(`/invoices/${createdInvoice.id}`);
   }
 
   async function createTemplateFromOffer(formData: FormData) {
@@ -327,7 +429,7 @@ export default async function OfferPage({
       redirect(`/offers/${offerId}?error=Kunne+ikke+hente+materiallinjer`);
     }
 
-    const rows = buildOfferMaterialRows(sourceMaterials || [], user.id, "temp");
+    const rows = buildTemplateRows(sourceMaterials || [], user.id, "temp");
 
     if (rows.length === 0) {
       redirect(
@@ -355,7 +457,7 @@ export default async function OfferPage({
       redirect(`/offers/${offerId}?error=Kunne+ikke+opprette+materialmal`);
     }
 
-    const insertRows = buildOfferMaterialRows(
+    const insertRows = buildTemplateRows(
       sourceMaterials || [],
       user.id,
       createdTemplate.id
@@ -452,7 +554,7 @@ export default async function OfferPage({
       redirect(`/offers/${offerId}?error=Kunne+ikke+hente+materiallinjer`);
     }
 
-    const incomingRows = buildOfferMaterialRows(
+    const incomingRows = buildTemplateRows(
       sourceMaterials || [],
       user.id,
       templateId
