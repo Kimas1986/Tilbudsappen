@@ -1,53 +1,128 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-type Offer = {
+type OfferRow = {
   id: string;
   status: string;
   total: number | null;
+  valid_until: string | null;
 };
 
-type MaterialLine = {
+type OfferMaterialRow = {
+  offer_id: string;
   line_total: number | null;
-  unit_price: number | null;
   quantity: number | null;
+  unit_price: number | null;
   waste_percent: number | null;
   markup_percent: number | null;
 };
 
+function isExpired(validUntil: string | null) {
+  if (!validUntil) return false;
+
+  const date = new Date(validUntil);
+
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  return date.getTime() < Date.now();
+}
+
+function getDisplayStatus(offer: OfferRow) {
+  if (offer.status === "approved") return "approved";
+  if (isExpired(offer.valid_until)) return "expired";
+  return offer.status;
+}
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("no-NO", {
     maximumFractionDigits: 0,
-  }).format(value || 0);
+  }).format(value);
 }
 
-function toNumber(v: number | null | undefined) {
-  return Number(v || 0);
+function formatPercent(value: number) {
+  return new Intl.NumberFormat("no-NO", {
+    maximumFractionDigits: 1,
+  }).format(value);
 }
 
-function getDisplayStatus(status: string) {
-  if (status === "approved") return "approved";
-  if (status === "sent") return "sent";
-  if (status === "draft") return "draft";
-  if (status === "rejected") return "rejected";
-  return status;
+function toNumber(value: number | null | undefined) {
+  return Number(value || 0);
 }
 
-function calculateCostPerUnit(item: MaterialLine) {
-  const unit = toNumber(item.unit_price);
-  const waste = toNumber(item.waste_percent);
-  const markup = toNumber(item.markup_percent);
+function calculateEstimatedCostPerUnit(item: OfferMaterialRow) {
+  const unitPrice = toNumber(item.unit_price);
+  const wastePercent = toNumber(item.waste_percent);
+  const markupPercent = toNumber(item.markup_percent);
 
-  const wasteFactor = 1 + waste / 100;
-  const markupFactor = 1 + markup / 100;
+  const wasteFactor = 1 + wastePercent / 100;
+  const markupFactor = 1 + markupPercent / 100;
 
-  if (wasteFactor <= 0 || markupFactor <= 0) return unit;
+  if (wasteFactor <= 0 || markupFactor <= 0) {
+    return unitPrice;
+  }
 
-  return unit / wasteFactor / markupFactor;
+  return unitPrice / wasteFactor / markupFactor;
 }
 
-function calculateCostTotal(item: MaterialLine) {
-  return calculateCostPerUnit(item) * toNumber(item.quantity);
+function calculateEstimatedCostTotal(item: OfferMaterialRow) {
+  return calculateEstimatedCostPerUnit(item) * toNumber(item.quantity);
+}
+
+function sumOfferValues(offers: OfferRow[]) {
+  return offers.reduce((sum, offer) => sum + toNumber(offer.total), 0);
+}
+
+function EconomyCard({
+  title,
+  value,
+  accent = "neutral",
+}: {
+  title: string;
+  value: string;
+  accent?: "neutral" | "green" | "blue" | "emerald";
+}) {
+  const classes =
+    accent === "green"
+      ? "bg-green-50 ring-1 ring-green-100"
+      : accent === "blue"
+        ? "bg-blue-50 ring-1 ring-blue-100"
+        : accent === "emerald"
+          ? "bg-emerald-50 ring-1 ring-emerald-100"
+          : "bg-neutral-100 ring-1 ring-black/5";
+
+  const textClasses =
+    accent === "green"
+      ? "text-green-900"
+      : accent === "blue"
+        ? "text-blue-900"
+        : accent === "emerald"
+          ? "text-emerald-900"
+          : "text-neutral-900";
+
+  return (
+    <div className={`rounded-2xl p-5 ${classes}`}>
+      <p className="text-sm text-neutral-500">{title}</p>
+      <p className={`mt-2 text-2xl font-bold ${textClasses}`}>{value}</p>
+    </div>
+  );
+}
+
+function DetailCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
+      <p className="text-sm text-neutral-500">{label}</p>
+      <p className="mt-2 text-xl font-bold">{value}</p>
+    </div>
+  );
 }
 
 export default async function EconomyPage() {
@@ -57,169 +132,227 @@ export default async function EconomyPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) redirect("/login");
+  if (!user) {
+    redirect("/login");
+  }
 
-  const { data: offers } = await supabase
-    .from("offers")
-    .select("id, status, total")
-    .eq("user_id", user.id);
+  const [{ data: offers, error: offersError }, { data: offerMaterials, error: materialsError }] =
+    await Promise.all([
+      supabase
+        .from("offers")
+        .select("id, status, total, valid_until")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("offer_materials")
+        .select(
+          "offer_id, line_total, quantity, unit_price, waste_percent, markup_percent"
+        )
+        .eq("user_id", user.id),
+    ]);
 
-  const { data: materials } = await supabase
-    .from("offer_materials")
-    .select("line_total, unit_price, quantity, waste_percent, markup_percent")
-    .eq("user_id", user.id);
+  if (offersError) {
+    console.error("Feil ved henting av tilbud:", offersError);
+  }
 
-  const typedOffers = (offers as Offer[]) || [];
-  const typedMaterials = (materials as MaterialLine[]) || [];
+  if (materialsError) {
+    console.error("Feil ved henting av materiallinjer:", materialsError);
+  }
 
-  // ===== TOP CARDS =====
-  const approved = typedOffers.filter((o) => getDisplayStatus(o.status) === "approved");
-  const sent = typedOffers.filter((o) => getDisplayStatus(o.status) === "sent");
+  const typedOffers = (offers as OfferRow[] | null) || [];
+  const typedOfferMaterials = (offerMaterials as OfferMaterialRow[] | null) || [];
 
-  const approvedValue = approved.reduce((sum, o) => sum + toNumber(o.total), 0);
-  const sentValue = sent.reduce((sum, o) => sum + toNumber(o.total), 0);
+  const offersWithDisplayStatus = typedOffers.map((offer) => ({
+    ...offer,
+    displayStatus: getDisplayStatus(offer),
+  }));
 
+  const approvedOffers = offersWithDisplayStatus.filter(
+    (offer) => offer.displayStatus === "approved"
+  );
+  const sentOffers = offersWithDisplayStatus.filter(
+    (offer) => offer.displayStatus === "sent"
+  );
+  const draftOffers = offersWithDisplayStatus.filter(
+    (offer) => offer.displayStatus === "draft"
+  );
+  const expiredOffers = offersWithDisplayStatus.filter(
+    (offer) => offer.displayStatus === "expired"
+  );
+
+  const approvedValue = sumOfferValues(approvedOffers);
+  const sentValue = sumOfferValues(sentOffers);
+  const draftValue = sumOfferValues(draftOffers);
+
+  const approvalBaseCount = approvedOffers.length + sentOffers.length;
   const approvalRate =
-    typedOffers.length > 0
-      ? Math.round((approved.length / typedOffers.length) * 100)
+    approvalBaseCount > 0
+      ? (approvedOffers.length / approvalBaseCount) * 100
       : 0;
 
-  // ===== PROFIT =====
-  const materialsSales = typedMaterials.reduce(
-    (sum, m) => sum + toNumber(m.line_total),
+  const approvedOfferIds = new Set(approvedOffers.map((offer) => offer.id));
+  const approvedOfferMaterials = typedOfferMaterials.filter((item) =>
+    approvedOfferIds.has(item.offer_id)
+  );
+
+  const approvedMaterialsOut = approvedOfferMaterials.reduce(
+    (sum, item) => sum + toNumber(item.line_total),
     0
   );
 
-  const materialsCost = typedMaterials.reduce(
-    (sum, m) => sum + calculateCostTotal(m),
+  const approvedEstimatedMaterialCost = approvedOfferMaterials.reduce(
+    (sum, item) => sum + calculateEstimatedCostTotal(item),
     0
   );
 
-  const profit = materialsSales - materialsCost;
+  const approvedEstimatedMaterialProfit =
+    approvedMaterialsOut - approvedEstimatedMaterialCost;
 
-  const margin =
-    materialsSales > 0
-      ? Math.round((profit / materialsSales) * 100)
+  const approvedMaterialMargin =
+    approvedMaterialsOut > 0
+      ? (approvedEstimatedMaterialProfit / approvedMaterialsOut) * 100
       : 0;
+
+  const hasApprovedMaterialData = approvedOfferMaterials.length > 0;
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
       <div className="mx-auto max-w-6xl px-6 py-12">
         <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
-
-          {/* HEADER */}
-          <div className="flex flex-col gap-4 lg:flex-row lg:justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">Økonomi</h1>
-              <p className="mt-2 text-neutral-500">
-                Oversikt over hva du tjener og hva som er ute hos kunder.
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-sm font-medium text-neutral-500">Tilbudsapp</p>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight">Økonomi</h1>
+              <p className="mt-4 text-sm text-neutral-600">
+                Her ser du det viktigste: hva som er landet, hva som venter svar,
+                og hva du faktisk tjener på godkjente tilbud.
               </p>
             </div>
 
-            <div className="flex gap-3">
-              <a href="/dashboard" className="rounded-2xl border px-4 py-2">
-                Dashboard
-              </a>
-              <a href="/offers/new" className="rounded-2xl bg-black px-4 py-2 text-white">
+            <div className="grid gap-3 sm:grid-cols-2 lg:w-[360px]">
+              <Link
+                href="/dashboard"
+                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
+              >
+                Tilbake til dashboard
+              </Link>
+
+              <Link
+                href="/offers/new"
+                className="rounded-2xl bg-black px-5 py-3 text-center text-sm font-medium text-white"
+              >
                 + Nytt tilbud
-              </a>
+              </Link>
+
+              <Link
+                href="/materials"
+                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
+              >
+                Materialdatabase
+              </Link>
+
+              <Link
+                href="/settings"
+                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
+              >
+                Innstillinger
+              </Link>
             </div>
           </div>
 
-          {/* TOP CARDS */}
           <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Card title="Omsetning (godkjent)" value={approvedValue} />
-            <Card title="Ute hos kunde" value={sentValue} />
-            <Card title="Fortjeneste (estimert)" value={profit} />
-            <Card title="Godkjenningsrate" value={`${approvalRate} %`} />
+            <EconomyCard
+              title="Omsetning (godkjent)"
+              value={`${formatCurrency(approvedValue)} kr`}
+              accent="green"
+            />
+
+            <EconomyCard
+              title="Avventer svar"
+              value={`${formatCurrency(sentValue)} kr`}
+              accent="blue"
+            />
+
+            <EconomyCard
+              title="Fortjeneste (estimert)"
+              value={`${formatCurrency(approvedEstimatedMaterialProfit)} kr`}
+              accent="emerald"
+            />
+
+            <EconomyCard
+              title="Godkjenningsrate"
+              value={`${formatPercent(approvalRate)} %`}
+              accent="neutral"
+            />
           </div>
 
-          {/* MID SECTION */}
           <div className="mt-10 grid gap-6 lg:grid-cols-2">
-
-            {/* PIPELINE */}
-            <div className="rounded-2xl bg-neutral-50 p-5">
-              <h2 className="font-semibold">Pipeline</h2>
+            <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+              <h2 className="text-lg font-semibold">Pipeline</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Dette viser hvor mye som fortsatt er i bevegelse.
+              </p>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <MiniCard
+                <DetailCard
                   label="Utkast"
-                  value={sumByStatus(typedOffers, "draft")}
+                  value={`${formatCurrency(draftValue)} kr`}
                 />
-                <MiniCard
-                  label="Sendt"
-                  value={sumByStatus(typedOffers, "sent")}
+                <DetailCard
+                  label="Sendt til kunde"
+                  value={`${formatCurrency(sentValue)} kr`}
                 />
-                <MiniCard
+                <DetailCard
                   label="Godkjent"
-                  value={sumByStatus(typedOffers, "approved")}
+                  value={`${formatCurrency(approvedValue)} kr`}
                 />
-                <MiniCard
-                  label="Utløpt"
-                  value={typedOffers.filter((o) => o.status === "expired").length}
-                  isCount
+                <DetailCard
+                  label="Utløpte tilbud"
+                  value={`${expiredOffers.length} stk`}
                 />
               </div>
-            </div>
+            </section>
 
-            {/* PROFIT */}
-            <div className="rounded-2xl bg-green-50 p-5">
-              <h2 className="font-semibold">Fortjeneste</h2>
+            <section className="rounded-2xl bg-green-50 p-5 ring-1 ring-green-100">
+              <h2 className="text-lg font-semibold text-green-900">
+                Fortjeneste
+              </h2>
+              <p className="mt-2 text-sm text-green-800">
+                Beregnes kun på godkjente tilbud og bare der materiallinjene gir
+                grunnlag for kostberegning.
+              </p>
 
-              {materialsSales === 0 ? (
-                <p className="mt-4 text-sm text-neutral-500">
-                  Ingen materialdata ennå. Legg inn materialer i tilbud for å se fortjeneste.
-                </p>
-              ) : (
+              {hasApprovedMaterialData ? (
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <MiniCard label="Materialer ut" value={materialsSales} />
-                  <MiniCard label="Kost" value={materialsCost} />
-                  <MiniCard label="Fortjeneste" value={profit} />
-                  <MiniCard label="Margin" value={`${margin} %`} />
+                  <DetailCard
+                    label="Materialer ut"
+                    value={`${formatCurrency(approvedMaterialsOut)} kr`}
+                  />
+                  <DetailCard
+                    label="Anslått materialkost"
+                    value={`${formatCurrency(approvedEstimatedMaterialCost)} kr`}
+                  />
+                  <DetailCard
+                    label="Estimert fortjeneste"
+                    value={`${formatCurrency(approvedEstimatedMaterialProfit)} kr`}
+                  />
+                  <DetailCard
+                    label="Margin"
+                    value={`${formatPercent(approvedMaterialMargin)} %`}
+                  />
+                </div>
+              ) : (
+                <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-green-100">
+                  <p className="text-sm text-neutral-700">
+                    Ingen fortjenestedata å vise ennå. Dette kommer når godkjente
+                    tilbud har materiallinjer med kostgrunnlag.
+                  </p>
                 </div>
               )}
-            </div>
+            </section>
           </div>
         </div>
       </div>
     </main>
   );
-}
-
-// ===== COMPONENTS =====
-
-function Card({ title, value }: { title: string; value: number | string }) {
-  return (
-    <div className="rounded-2xl bg-neutral-100 p-5">
-      <p className="text-sm text-neutral-500">{title}</p>
-      <p className="mt-2 text-2xl font-bold">
-        {typeof value === "number" ? `${formatCurrency(value)} kr` : value}
-      </p>
-    </div>
-  );
-}
-
-function MiniCard({
-  label,
-  value,
-  isCount,
-}: {
-  label: string;
-  value: number;
-  isCount?: boolean;
-}) {
-  return (
-    <div className="rounded-xl bg-white p-4">
-      <p className="text-sm text-neutral-500">{label}</p>
-      <p className="mt-1 font-semibold">
-        {isCount ? value : `${formatCurrency(value)} kr`}
-      </p>
-    </div>
-  );
-}
-
-function sumByStatus(offers: Offer[], status: string) {
-  return offers
-    .filter((o) => o.status === status)
-    .reduce((sum, o) => sum + toNumber(o.total), 0);
 }
