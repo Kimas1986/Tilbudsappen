@@ -3,6 +3,9 @@ import { redirect, notFound } from "next/navigation";
 import CopyLinkButton from "@/components/copy-link-button";
 import { createClient } from "@/lib/supabase/server";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 type OfferMaterial = {
   id: string;
   material_id: string | null;
