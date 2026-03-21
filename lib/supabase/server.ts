@@ -18,8 +18,7 @@ export async function createClient() {
               cookieStore.set(name, value, options);
             });
           } catch {
-            // Server Components kan ikke alltid skrive cookies.
-            // Middleware håndterer refresh av auth-cookies.
+            // Ignoreres i server components.
           }
         },
       },
