@@ -47,6 +47,7 @@ type OfferRow = {
   vat_amount: number | null;
   subtotal: number | null;
   total: number | null;
+  customer_id?: string | null;
   customers?: CustomerRelation;
 };
 
@@ -226,6 +227,53 @@ export default async function OfferPage({
 
   if (!user) {
     redirect("/login");
+  }
+
+  async function createInvoiceFromOffer() {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/invoices/create-from-offer`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: "",
+        },
+        body: JSON.stringify({
+          offerId: id,
+        }),
+        cache: "no-store",
+      }
+    );
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      const error =
+        typeof data?.error === "string"
+          ? data.error
+          : "Kunne ikke opprette faktura";
+      redirect(`/offers/${id}?error=${encodeURIComponent(error)}`);
+    }
+
+    const invoiceId = String(data?.invoiceId || "").trim();
+
+    if (!invoiceId) {
+      redirect(`/offers/${id}?error=Kunne+ikke+finne+ny+faktura`);
+    }
+
+    redirect(`/invoices/${invoiceId}`);
   }
 
   async function createTemplateFromOffer(formData: FormData) {
@@ -542,6 +590,7 @@ export default async function OfferPage({
   const [
     { data: offer, error },
     { data: templates, error: templatesError },
+    { data: existingInvoice, error: existingInvoiceError },
   ] = await Promise.all([
     supabase
       .from("offers")
@@ -564,6 +613,7 @@ export default async function OfferPage({
         vat_amount,
         subtotal,
         total,
+        customer_id,
         customers(name, email, phone)
       `
       )
@@ -575,6 +625,12 @@ export default async function OfferPage({
       .select("id, name, description")
       .eq("user_id", user.id)
       .order("name", { ascending: true }),
+    supabase
+      .from("invoices")
+      .select("id, status")
+      .eq("offer_id", id)
+      .eq("user_id", user.id)
+      .maybeSingle(),
   ]);
 
   if (error || !offer) {
@@ -583,6 +639,10 @@ export default async function OfferPage({
 
   if (templatesError) {
     console.error("Feil ved henting av materialmaler:", templatesError);
+  }
+
+  if (existingInvoiceError) {
+    console.error("Feil ved henting av eksisterende faktura:", existingInvoiceError);
   }
 
   const typedOffer = offer as OfferRow;
@@ -634,6 +694,8 @@ export default async function OfferPage({
   const linkedMaterialRows = materials.filter((item) => item.material_id).length;
   const missingLinkedMaterialRows = totalMaterialRows - linkedMaterialRows;
   const canCreateTemplate = linkedMaterialRows > 0;
+  const canCreateInvoice = displayStatus === "approved";
+  const existingInvoiceId = String(existingInvoice?.id || "").trim();
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -784,8 +846,8 @@ export default async function OfferPage({
             <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
               <h2 className="text-lg font-semibold">Handlinger og maler</h2>
               <p className="mt-2 text-sm text-neutral-600">
-                Herfra kan du åpne PDF, sende e-post, dele kundelenken og bygge
-                materialmaler fra tilbudet.
+                Herfra kan du åpne PDF, sende e-post, dele kundelenken, lage
+                faktura og bygge materialmaler fra tilbudet.
               </p>
 
               <div className="mt-4 grid gap-3">
@@ -816,6 +878,25 @@ export default async function OfferPage({
                   </button>
                 </form>
 
+                {existingInvoiceId ? (
+                  <Link
+                    href={`/invoices/${existingInvoiceId}`}
+                    className="rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white"
+                  >
+                    Åpne faktura
+                  </Link>
+                ) : (
+                  <form action={createInvoiceFromOffer}>
+                    <button
+                      type="submit"
+                      disabled={!canCreateInvoice}
+                      className="w-full rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Lag faktura
+                    </button>
+                  </form>
+                )}
+
                 <Link
                   href="/materials"
                   className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
@@ -823,6 +904,18 @@ export default async function OfferPage({
                   Åpne materialmaler
                 </Link>
               </div>
+
+              {!canCreateInvoice && !existingInvoiceId ? (
+                <div className="mt-4 rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-900">
+                  Faktura kan først opprettes når tilbudet er godkjent.
+                </div>
+              ) : null}
+
+              {existingInvoiceId ? (
+                <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
+                  Dette tilbudet har allerede en faktura koblet til seg.
+                </div>
+              ) : null}
 
               <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4">
                 <p className="text-sm font-medium text-neutral-900">
@@ -857,7 +950,7 @@ export default async function OfferPage({
                   Lag ny materialmal fra dette tilbudet
                 </p>
                 <p className="mt-1 text-sm text-emerald-800">
-                  Lager en helt ny mal basert på materialene i dette tilbudet.
+                  Lager en ny mal basert på materialene i dette tilbudet.
                 </p>
 
                 <form action={createTemplateFromOffer} className="mt-4 space-y-3">

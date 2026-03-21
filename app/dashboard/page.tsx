@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -168,45 +169,52 @@ export default async function DashboardPage() {
               </p>
               <p className="mt-4 max-w-2xl text-sm text-neutral-600">
                 Her ser du status på tilbudene dine, hva som ligger ute akkurat nå
-                og kan gå rett videre til tilbud, økonomi og materialer.
+                og kan gå rett videre til tilbud, økonomi, fakturaer og materialer.
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:w-[420px]">
-              <a
+              <Link
                 href="/offers/new"
                 className="rounded-2xl bg-black px-5 py-3 text-center text-sm font-medium text-white"
               >
                 + Nytt tilbud
-              </a>
+              </Link>
 
-              <a
+              <Link
                 href="/economy"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Økonomi
-              </a>
+              </Link>
 
-              <a
+              <Link
                 href="/materials"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Materialdatabase
-              </a>
+              </Link>
 
-              <a
+              <Link
+                href="/invoices"
+                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
+              >
+                Fakturaer
+              </Link>
+
+              <Link
                 href="/settings"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Innstillinger
-              </a>
+              </Link>
 
-              <a
+              <Link
                 href="/logout"
-                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900 sm:col-span-2"
+                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Logg ut
-              </a>
+              </Link>
             </div>
           </div>
 
@@ -278,7 +286,7 @@ export default async function DashboardPage() {
                       className="rounded-2xl border border-neutral-200 bg-white p-4 transition hover:bg-neutral-50"
                     >
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <a href={`/offers/${offer.id}`} className="min-w-0 flex-1">
+                        <Link href={`/offers/${offer.id}`} className="min-w-0 flex-1">
                           <p className="truncate text-lg font-semibold">
                             {getCustomerName(offer)}
                           </p>
@@ -304,7 +312,7 @@ export default async function DashboardPage() {
                               {offer.description}
                             </p>
                           ) : null}
-                        </a>
+                        </Link>
 
                         <div className="flex flex-col items-start gap-3 lg:items-end">
                           <span
@@ -316,12 +324,12 @@ export default async function DashboardPage() {
                           </span>
 
                           <div className="flex gap-2">
-                            <a
+                            <Link
                               href={`/offers/${offer.id}`}
                               className="rounded-xl border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-900"
                             >
                               Åpne
-                            </a>
+                            </Link>
 
                             <form action={deleteOffer}>
                               <input type="hidden" name="offerId" value={offer.id} />

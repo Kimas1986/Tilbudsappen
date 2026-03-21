@@ -9,6 +9,35 @@ type OfferRow = {
   valid_until: string | null;
 };
 
+type InvoiceRow = {
+  id: string;
+  status: string;
+  total: number | null;
+  created_at: string | null;
+  due_date: string | null;
+  paid_at: string | null;
+};
+
+type InvoiceCustomerRelation =
+  | {
+      name: string | null;
+    }
+  | {
+      name: string | null;
+    }[]
+  | null;
+
+type RecentInvoiceRow = {
+  id: string;
+  title: string | null;
+  status: string;
+  total: number | null;
+  created_at: string | null;
+  due_date: string | null;
+  paid_at: string | null;
+  customers?: InvoiceCustomerRelation;
+};
+
 type OfferMaterialRow = {
   offer_id: string;
   line_total: number | null;
@@ -48,6 +77,16 @@ function formatPercent(value: number) {
   }).format(value);
 }
 
+function formatDate(value: string | null) {
+  if (!value) return "-";
+
+  try {
+    return new Date(value).toLocaleDateString("no-NO");
+  } catch {
+    return "-";
+  }
+}
+
 function toNumber(value: number | null | undefined) {
   return Number(value || 0);
 }
@@ -73,6 +112,34 @@ function calculateEstimatedCostTotal(item: OfferMaterialRow) {
 
 function sumOfferValues(offers: OfferRow[]) {
   return offers.reduce((sum, offer) => sum + toNumber(offer.total), 0);
+}
+
+function sumInvoiceValues(invoices: InvoiceRow[]) {
+  return invoices.reduce((sum, invoice) => sum + toNumber(invoice.total), 0);
+}
+
+function getInvoiceStatusLabel(status: string) {
+  if (status === "draft") return "Utkast";
+  if (status === "sent") return "Sendt";
+  if (status === "paid") return "Betalt";
+  if (status === "cancelled") return "Kreditert";
+  return status;
+}
+
+function getInvoiceStatusClasses(status: string) {
+  if (status === "draft") return "bg-yellow-100 text-yellow-800";
+  if (status === "sent") return "bg-blue-100 text-blue-800";
+  if (status === "paid") return "bg-green-100 text-green-800";
+  if (status === "cancelled") return "bg-red-100 text-red-800";
+  return "bg-neutral-100 text-neutral-800";
+}
+
+function getCustomerName(customers: InvoiceCustomerRelation) {
+  if (Array.isArray(customers)) {
+    return customers[0]?.name || "Uten kunde";
+  }
+
+  return customers?.name || "Uten kunde";
 }
 
 function EconomyCard({
@@ -136,20 +203,46 @@ export default async function EconomyPage() {
     redirect("/login");
   }
 
-  const [{ data: offers, error: offersError }, { data: offerMaterials, error: materialsError }] =
-    await Promise.all([
-      supabase
-        .from("offers")
-        .select("id, status, total, valid_until")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("offer_materials")
-        .select(
-          "offer_id, line_total, quantity, unit_price, waste_percent, markup_percent"
-        )
-        .eq("user_id", user.id),
-    ]);
+  const [
+    { data: offers, error: offersError },
+    { data: offerMaterials, error: materialsError },
+    { data: invoices, error: invoicesError },
+    { data: recentInvoices, error: recentInvoicesError },
+  ] = await Promise.all([
+    supabase
+      .from("offers")
+      .select("id, status, total, valid_until")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("offer_materials")
+      .select(
+        "offer_id, line_total, quantity, unit_price, waste_percent, markup_percent"
+      )
+      .eq("user_id", user.id),
+    supabase
+      .from("invoices")
+      .select("id, status, total, created_at, due_date, paid_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("invoices")
+      .select(
+        `
+        id,
+        title,
+        status,
+        total,
+        created_at,
+        due_date,
+        paid_at,
+        customers(name)
+      `
+      )
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(6),
+  ]);
 
   if (offersError) {
     console.error("Feil ved henting av tilbud:", offersError);
@@ -159,8 +252,18 @@ export default async function EconomyPage() {
     console.error("Feil ved henting av materiallinjer:", materialsError);
   }
 
+  if (invoicesError) {
+    console.error("Feil ved henting av fakturaer:", invoicesError);
+  }
+
+  if (recentInvoicesError) {
+    console.error("Feil ved henting av fakturaliste:", recentInvoicesError);
+  }
+
   const typedOffers = (offers as OfferRow[] | null) || [];
   const typedOfferMaterials = (offerMaterials as OfferMaterialRow[] | null) || [];
+  const typedInvoices = (invoices as InvoiceRow[] | null) || [];
+  const typedRecentInvoices = (recentInvoices as RecentInvoiceRow[] | null) || [];
 
   const offersWithDisplayStatus = typedOffers.map((offer) => ({
     ...offer,
@@ -215,6 +318,14 @@ export default async function EconomyPage() {
 
   const hasApprovedMaterialData = approvedOfferMaterials.length > 0;
 
+  const paidInvoices = typedInvoices.filter((invoice) => invoice.status === "paid");
+  const sentInvoices = typedInvoices.filter((invoice) => invoice.status === "sent");
+  const draftInvoices = typedInvoices.filter((invoice) => invoice.status === "draft");
+
+  const totalInvoicedValue = sumInvoiceValues(paidInvoices);
+  const outstandingInvoiceValue = sumInvoiceValues(sentInvoices);
+  const draftInvoiceValue = sumInvoiceValues(draftInvoices);
+
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
       <div className="mx-auto max-w-6xl px-6 py-12">
@@ -225,16 +336,16 @@ export default async function EconomyPage() {
               <h1 className="mt-1 text-3xl font-bold tracking-tight">Økonomi</h1>
               <p className="mt-4 text-sm text-neutral-600">
                 Her ser du det viktigste: hva som er landet, hva som venter svar,
-                og hva du faktisk tjener på godkjente tilbud.
+                hva som er fakturert, og hva du faktisk tjener på godkjente tilbud.
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:w-[360px]">
+            <div className="grid gap-3 sm:grid-cols-2 lg:w-[420px]">
               <Link
                 href="/dashboard"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
-                Tilbake til dashboard
+                Dashboard
               </Link>
 
               <Link
@@ -252,15 +363,15 @@ export default async function EconomyPage() {
               </Link>
 
               <Link
-                href="/settings"
+                href="/invoices"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
-                Innstillinger
+                Fakturaer
               </Link>
             </div>
           </div>
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <EconomyCard
               title="Omsetning (godkjent)"
               value={`${formatCurrency(approvedValue)} kr`}
@@ -271,6 +382,12 @@ export default async function EconomyPage() {
               title="Avventer svar"
               value={`${formatCurrency(sentValue)} kr`}
               accent="blue"
+            />
+
+            <EconomyCard
+              title="Totalt fakturert"
+              value={`${formatCurrency(totalInvoicedValue)} kr`}
+              accent="neutral"
             />
 
             <EconomyCard
@@ -347,6 +464,99 @@ export default async function EconomyPage() {
                     Ingen fortjenestedata å vise ennå. Dette kommer når godkjente
                     tilbud har materiallinjer med kostgrunnlag.
                   </p>
+                </div>
+              )}
+            </section>
+          </div>
+
+          <div className="mt-10 grid gap-6 lg:grid-cols-2">
+            <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+              <h2 className="text-lg font-semibold">Fakturastatus</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Oversikt over hva som er sendt, betalt og fortsatt ligger som kladd.
+              </p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <DetailCard
+                  label="Totalt fakturert"
+                  value={`${formatCurrency(totalInvoicedValue)} kr`}
+                />
+                <DetailCard
+                  label="Utestående fakturaer"
+                  value={`${formatCurrency(outstandingInvoiceValue)} kr`}
+                />
+                <DetailCard
+                  label="Fakturakladder"
+                  value={`${formatCurrency(draftInvoiceValue)} kr`}
+                />
+                <DetailCard
+                  label="Betalte fakturaer"
+                  value={`${paidInvoices.length} stk`}
+                />
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Siste fakturaer</h2>
+                  <p className="mt-2 text-sm text-neutral-600">
+                    Rask oversikt over de nyeste fakturaene dine.
+                  </p>
+                </div>
+
+                <Link
+                  href="/invoices"
+                  className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
+                >
+                  Åpne alle
+                </Link>
+              </div>
+
+              {typedRecentInvoices.length === 0 ? (
+                <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                  <p className="text-sm text-neutral-500">
+                    Ingen fakturaer enda.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {typedRecentInvoices.map((invoice) => (
+                    <Link
+                      key={invoice.id}
+                      href={`/invoices/${invoice.id}`}
+                      className="block rounded-2xl bg-white p-4 ring-1 ring-black/5 transition hover:bg-neutral-50"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="font-medium">
+                            {getCustomerName(invoice.customers || null)}
+                          </p>
+                          <p className="mt-1 text-sm text-neutral-500">
+                            {invoice.title || "Faktura"}
+                          </p>
+                          <p className="mt-1 text-xs text-neutral-500">
+                            Opprettet {formatDate(invoice.created_at)} • Forfall{" "}
+                            {formatDate(invoice.due_date)}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-col items-start gap-2 sm:items-end">
+                          <span
+                            className={`rounded-lg px-3 py-1 text-xs font-medium ${getInvoiceStatusClasses(
+                              invoice.status
+                            )}`}
+                          >
+                            {getInvoiceStatusLabel(invoice.status)}
+                          </span>
+
+                          <p className="font-bold">
+                            {formatCurrency(toNumber(invoice.total))} kr
+                          </p>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
                 </div>
               )}
             </section>
