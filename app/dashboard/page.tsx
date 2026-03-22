@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -182,47 +181,47 @@ export default async function DashboardPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:w-[420px]">
-              <Link
+              <a
                 href="/offers/new"
                 className="rounded-2xl bg-black px-5 py-3 text-center text-sm font-medium text-white"
               >
                 + Nytt tilbud
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/economy"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Økonomi
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/materials"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Materialdatabase
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/invoices"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Fakturaer
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/settings"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Innstillinger
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/logout"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Logg ut
-              </Link>
+              </a>
             </div>
           </div>
 
@@ -294,7 +293,7 @@ export default async function DashboardPage() {
                       className="rounded-2xl border border-neutral-200 bg-white p-4 transition hover:bg-neutral-50"
                     >
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <Link href={`/offers/${offer.id}`} className="min-w-0 flex-1">
+                        <a href={`/offers/${offer.id}`} className="min-w-0 flex-1">
                           <p className="truncate text-lg font-semibold">
                             {getCustomerName(offer)}
                           </p>
@@ -320,7 +319,7 @@ export default async function DashboardPage() {
                               {offer.description}
                             </p>
                           ) : null}
-                        </Link>
+                        </a>
 
                         <div className="flex flex-col items-start gap-3 lg:items-end">
                           <span
@@ -332,12 +331,12 @@ export default async function DashboardPage() {
                           </span>
 
                           <div className="flex gap-2">
-                            <Link
+                            <a
                               href={`/offers/${offer.id}`}
                               className="rounded-xl border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-900"
                             >
                               Åpne
-                            </Link>
+                            </a>
 
                             <form action={deleteOffer}>
                               <input type="hidden" name="offerId" value={offer.id} />
