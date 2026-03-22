@@ -1,12 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+
+function getSafeNextPath() {
+  if (typeof window === "undefined") {
+    return "/dashboard";
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const next = params.get("next");
+
+  if (next && next.startsWith("/") && !next.startsWith("//")) {
+    return next;
+  }
+
+  return "/dashboard";
+}
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,11 +48,7 @@ export default function LoginPage() {
 
       await supabase.auth.refreshSession();
 
-      const next = searchParams.get("next");
-      const target =
-        next && next.startsWith("/") && !next.startsWith("//")
-          ? next
-          : "/dashboard";
+      const target = getSafeNextPath();
 
       router.replace(target);
       router.refresh();
