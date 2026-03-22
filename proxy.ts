@@ -1,20 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/", "/login", "/register"];
-
-function isPublicPath(pathname: string) {
-  if (PUBLIC_PATHS.includes(pathname)) {
-    return true;
-  }
-
-  if (pathname.startsWith("/t/")) {
-    return true;
-  }
-
-  return false;
-}
-
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
     request: {
@@ -40,25 +26,7 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const pathname = request.nextUrl.pathname;
-
-  if (!user && !isPublicPath(pathname)) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
-    loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  if (user && (pathname === "/login" || pathname === "/register")) {
-    const dashboardUrl = request.nextUrl.clone();
-    dashboardUrl.pathname = "/dashboard";
-    dashboardUrl.search = "";
-    return NextResponse.redirect(dashboardUrl);
-  }
+  await supabase.auth.getUser();
 
   return response;
 }
