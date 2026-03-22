@@ -48,7 +48,7 @@ function formatDate(value: string | null | undefined) {
   }
 }
 
-function formatDateTimeIso() {
+function nowIso() {
   return new Date().toISOString();
 }
 
@@ -84,10 +84,15 @@ function buildLinesHtml(lines: InvoiceLine[]) {
 
   return lines
     .map((line) => {
-      const title = escapeHtml(line.title || "Linje");
-      const description = line.description
+      const title = escapeHtml(String(line.title || "Linje"));
+      const quantity = Number(line.quantity || 0);
+      const unit = escapeHtml(String(line.unit || ""));
+      const unitPrice = formatCurrency(line.unit_price);
+      const lineTotal = formatCurrency(line.line_total);
+
+      const description = String(line.description || "").trim()
         ? `<div style="margin-top:4px;color:#737373;font-size:12px;">${escapeHtml(
-            line.description
+            String(line.description || "")
           )}</div>`
         : "";
 
@@ -98,13 +103,13 @@ function buildLinesHtml(lines: InvoiceLine[]) {
             ${description}
           </td>
           <td style="padding:12px;border-bottom:1px solid #e5e5e5;vertical-align:top;text-align:right;color:#171717;">
-            ${escapeHtml(String(line.quantity || 0))} ${escapeHtml(line.unit || "")}
+            ${escapeHtml(String(quantity))}${unit ? ` ${unit}` : ""}
           </td>
           <td style="padding:12px;border-bottom:1px solid #e5e5e5;vertical-align:top;text-align:right;color:#171717;">
-            ${formatCurrency(line.unit_price)} kr
+            ${unitPrice} kr
           </td>
           <td style="padding:12px;border-bottom:1px solid #e5e5e5;vertical-align:top;text-align:right;color:#171717;font-weight:600;">
-            ${formatCurrency(line.line_total)} kr
+            ${lineTotal} kr
           </td>
         </tr>
       `;
@@ -155,10 +160,7 @@ export async function POST(
       .single();
 
     if (invoiceError || !invoice) {
-      return NextResponse.json(
-        { error: "Fant ikke faktura" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Fant ikke faktura" }, { status: 404 });
     }
 
     const { data: invoiceLines, error: linesError } = await supabase
@@ -211,6 +213,7 @@ export async function POST(
     const companyName = String(settings?.company_name || "").trim() || "Tilbudsapp";
     const contactName = String(settings?.contact_name || "").trim();
     const contactPhone = String(settings?.contact_phone || "").trim();
+
     const invoiceTitle = String(invoice.title || "").trim() || "Faktura";
     const invoiceDescription = String(invoice.description || "").trim();
     const invoiceNumber = String(invoice.invoice_number || "").trim();
@@ -238,7 +241,7 @@ export async function POST(
 
         <p>Hei ${escapeHtml(customer.name)},</p>
 
-        <p>Her kommer fakturaen for utført arbeid.</p>
+        <p>Her kommer fakturaen for utført arbeid og leverte varer/tjenester.</p>
 
         <div style="border:1px solid #e5e5e5;border-radius:16px;padding:16px;background:#fafafa;">
           <p style="margin:0 0 8px 0;"><strong>${escapeHtml(invoiceTitle)}</strong></p>
@@ -326,18 +329,13 @@ export async function POST(
       );
     }
 
-    const updatePayload =
-      invoice.status === "paid"
-        ? {}
-        : {
-            status: "sent",
-            sent_at: invoice.sent_at || formatDateTimeIso(),
-          };
-
-    if (Object.keys(updatePayload).length > 0) {
+    if (invoice.status !== "paid") {
       const { error: updateError } = await supabase
         .from("invoices")
-        .update(updatePayload)
+        .update({
+          status: "sent",
+          sent_at: invoice.sent_at || nowIso(),
+        })
         .eq("id", invoice.id)
         .eq("user_id", user.id);
 

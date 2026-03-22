@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -46,6 +45,7 @@ function getInvoiceStatusLabel(status: string) {
   if (status === "draft") return "Utkast";
   if (status === "sent") return "Sendt";
   if (status === "paid") return "Betalt";
+  if (status === "overdue") return "Forfalt";
   if (status === "cancelled") return "Kreditert";
   return status;
 }
@@ -54,6 +54,7 @@ function getInvoiceStatusClasses(status: string) {
   if (status === "draft") return "bg-yellow-100 text-yellow-800";
   if (status === "sent") return "bg-blue-100 text-blue-800";
   if (status === "paid") return "bg-green-100 text-green-800";
+  if (status === "overdue") return "bg-orange-100 text-orange-800";
   if (status === "cancelled") return "bg-red-100 text-red-800";
   return "bg-neutral-100 text-neutral-800";
 }
@@ -147,10 +148,12 @@ export default async function InvoicesPage() {
   const draftCount = getStatusCount(typedInvoices, "draft");
   const sentCount = getStatusCount(typedInvoices, "sent");
   const paidCount = getStatusCount(typedInvoices, "paid");
+  const overdueCount = getStatusCount(typedInvoices, "overdue");
 
   const draftValue = sumInvoiceValues(typedInvoices, ["draft"]);
   const sentValue = sumInvoiceValues(typedInvoices, ["sent"]);
   const paidValue = sumInvoiceValues(typedInvoices, ["paid"]);
+  const overdueValue = sumInvoiceValues(typedInvoices, ["overdue"]);
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -159,49 +162,48 @@ export default async function InvoicesPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-sm font-medium text-neutral-500">Tilbudsapp</p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">
-                Fakturaer
-              </h1>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight">Fakturaer</h1>
               <p className="mt-4 text-sm text-neutral-600">
                 Her ser du alle fakturaene dine, hva som er sendt, hva som er
-                betalt og hva som fortsatt ligger som kladd.
+                betalt, hva som er forfalt og hva som fortsatt ligger som utkast
+                for redigering.
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:w-[420px]">
-              <Link
+              <a
                 href="/dashboard"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Dashboard
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/economy"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Økonomi
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/offers/new"
                 className="rounded-2xl bg-black px-5 py-3 text-center text-sm font-medium text-white"
               >
                 + Nytt tilbud
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/materials"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Materialdatabase
-              </Link>
+              </a>
             </div>
           </div>
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl bg-yellow-50 p-5 ring-1 ring-yellow-100">
-              <p className="text-sm text-yellow-800">Kladder</p>
+              <p className="text-sm text-yellow-800">Utkast</p>
               <p className="mt-2 text-2xl font-bold text-yellow-900">
                 {draftCount}
               </p>
@@ -229,6 +231,16 @@ export default async function InvoicesPage() {
                 {formatCurrency(paidValue)} kr
               </p>
             </div>
+
+            <div className="rounded-2xl bg-orange-50 p-5 ring-1 ring-orange-100">
+              <p className="text-sm text-orange-800">Forfalt</p>
+              <p className="mt-2 text-2xl font-bold text-orange-900">
+                {overdueCount}
+              </p>
+              <p className="mt-2 text-sm text-orange-900/80">
+                {formatCurrency(overdueValue)} kr
+              </p>
+            </div>
           </div>
 
           <div className="mt-10">
@@ -253,7 +265,7 @@ export default async function InvoicesPage() {
                     className="rounded-2xl border border-neutral-200 bg-white p-4 transition hover:bg-neutral-50"
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <Link href={`/invoices/${invoice.id}`} className="min-w-0 flex-1">
+                      <a href={`/invoices/${invoice.id}`} className="min-w-0 flex-1">
                         <p className="truncate text-lg font-semibold">
                           {getCustomerName(invoice.customers || null)}
                         </p>
@@ -293,7 +305,7 @@ export default async function InvoicesPage() {
                             Betalt: {formatDate(invoice.paid_at)}
                           </p>
                         ) : null}
-                      </Link>
+                      </a>
 
                       <div className="flex flex-col items-start gap-3 lg:items-end">
                         <span
@@ -305,12 +317,12 @@ export default async function InvoicesPage() {
                         </span>
 
                         <div className="flex gap-2">
-                          <Link
+                          <a
                             href={`/invoices/${invoice.id}`}
                             className="rounded-xl border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-900"
                           >
                             Åpne
-                          </Link>
+                          </a>
 
                           <form action={deleteInvoice}>
                             <input

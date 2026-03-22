@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -41,6 +40,11 @@ type InvoiceRow = {
   offer_id: string | null;
   customers?: CustomerRelation;
 };
+
+type SearchParams = Promise<{
+  error?: string;
+  success?: string;
+}>;
 
 function formatCurrency(value: number | null | undefined) {
   return new Intl.NumberFormat("no-NO", {
@@ -88,6 +92,7 @@ function getInvoiceStatusLabel(status: string) {
   if (status === "draft") return "Utkast";
   if (status === "sent") return "Sendt";
   if (status === "paid") return "Betalt";
+  if (status === "overdue") return "Forfalt";
   if (status === "cancelled") return "Kreditert";
   return status;
 }
@@ -96,14 +101,87 @@ function getInvoiceStatusClasses(status: string) {
   if (status === "draft") return "bg-yellow-100 text-yellow-800";
   if (status === "sent") return "bg-blue-100 text-blue-800";
   if (status === "paid") return "bg-green-100 text-green-800";
+  if (status === "overdue") return "bg-orange-100 text-orange-800";
   if (status === "cancelled") return "bg-red-100 text-red-800";
   return "bg-neutral-100 text-neutral-800";
 }
 
-type SearchParams = Promise<{
-  error?: string;
-  success?: string;
-}>;
+function toNumber(value: unknown) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function toDateInputValue(value: string | null | undefined) {
+  if (!value) return "";
+  try {
+    return new Date(value).toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
+}
+
+async function recalculateInvoiceTotals(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  invoiceId: string,
+  userId: string
+) {
+  const { data: invoiceForVat, error: invoiceForVatError } = await supabase
+    .from("invoices")
+    .select("subtotal, vat_amount")
+    .eq("id", invoiceId)
+    .eq("user_id", userId)
+    .single();
+
+  if (invoiceForVatError || !invoiceForVat) {
+    throw new Error("Kunne ikke hente faktura for MVA-beregning.");
+  }
+
+  const oldSubtotal = toNumber(invoiceForVat.subtotal);
+  const oldVatAmount = toNumber(invoiceForVat.vat_amount);
+  const vatRate = oldSubtotal > 0 && oldVatAmount > 0 ? oldVatAmount / oldSubtotal : 0;
+
+  const { data: lines, error: linesError } = await supabase
+    .from("invoice_lines")
+    .select("quantity, unit_price, line_total")
+    .eq("invoice_id", invoiceId)
+    .eq("user_id", userId);
+
+  if (linesError) {
+    throw new Error("Kunne ikke hente fakturalinjer for summering.");
+  }
+
+  const subtotal = round2(
+    (lines || []).reduce((sum, line) => {
+      const explicitLineTotal = Number(line.line_total);
+      if (Number.isFinite(explicitLineTotal)) {
+        return sum + explicitLineTotal;
+      }
+
+      return sum + toNumber(line.quantity) * toNumber(line.unit_price);
+    }, 0)
+  );
+
+  const vatAmount = round2(subtotal * vatRate);
+  const total = round2(subtotal + vatAmount);
+
+  const { error: updateInvoiceError } = await supabase
+    .from("invoices")
+    .update({
+      subtotal,
+      vat_amount: vatAmount,
+      total,
+    })
+    .eq("id", invoiceId)
+    .eq("user_id", userId);
+
+  if (updateInvoiceError) {
+    throw new Error("Kunne ikke oppdatere summer på faktura.");
+  }
+}
 
 export default async function InvoicePage({
   params,
@@ -127,11 +205,10 @@ export default async function InvoicePage({
     redirect("/login");
   }
 
-  async function markInvoiceSent() {
+  async function updateInvoiceHeader(formData: FormData) {
     "use server";
 
     const supabase = await createClient();
-
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -140,7 +217,193 @@ export default async function InvoicePage({
       redirect("/login");
     }
 
-    await supabase
+    const title = String(formData.get("title") || "").trim();
+    const description = String(formData.get("description") || "").trim();
+    const dueDateRaw = String(formData.get("due_date") || "").trim();
+
+    if (!title) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Fakturatittel må fylles ut")}`);
+    }
+
+    const updatePayload: {
+      title: string;
+      description: string | null;
+      due_date: string | null;
+    } = {
+      title,
+      description: description || null,
+      due_date: dueDateRaw ? new Date(`${dueDateRaw}T12:00:00`).toISOString() : null,
+    };
+
+    const { error } = await supabase
+      .from("invoices")
+      .update(updatePayload)
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke oppdatere fakturahodet")}`);
+    }
+
+    redirect(`/invoices/${id}?success=${encodeURIComponent("Fakturahodet ble oppdatert")}`);
+  }
+
+  async function updateInvoiceLine(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const lineId = String(formData.get("line_id") || "").trim();
+    const title = String(formData.get("title") || "").trim();
+    const description = String(formData.get("description") || "").trim();
+    const quantity = toNumber(formData.get("quantity"));
+    const unit = String(formData.get("unit") || "").trim();
+    const unitPrice = toNumber(formData.get("unit_price"));
+    const lineTotal = round2(quantity * unitPrice);
+
+    if (!lineId) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Mangler linje-ID")}`);
+    }
+
+    if (!title) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Linjetittel må fylles ut")}`);
+    }
+
+    const { error } = await supabase
+      .from("invoice_lines")
+      .update({
+        title,
+        description: description || null,
+        quantity,
+        unit: unit || null,
+        unit_price: unitPrice,
+        line_total: lineTotal,
+      })
+      .eq("id", lineId)
+      .eq("invoice_id", id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke oppdatere fakturalinjen")}`);
+    }
+
+    try {
+      await recalculateInvoiceTotals(supabase, id, user.id);
+    } catch {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Linjen ble lagret, men summer kunne ikke oppdateres")}`);
+    }
+
+    redirect(`/invoices/${id}?success=${encodeURIComponent("Fakturalinje oppdatert")}`);
+  }
+
+  async function addInvoiceLine(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const title = String(formData.get("title") || "").trim();
+    const description = String(formData.get("description") || "").trim();
+    const quantity = toNumber(formData.get("quantity"));
+    const unit = String(formData.get("unit") || "").trim();
+    const unitPrice = toNumber(formData.get("unit_price"));
+    const lineTotal = round2(quantity * unitPrice);
+
+    if (!title) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Ny linje må ha en tittel")}`);
+    }
+
+    const safeQuantity = quantity > 0 ? quantity : 1;
+
+    const { error } = await supabase.from("invoice_lines").insert({
+      invoice_id: id,
+      user_id: user.id,
+      line_type: "item",
+      title,
+      description: description || null,
+      quantity: safeQuantity,
+      unit: unit || "stk",
+      unit_price: unitPrice,
+      line_total: round2(safeQuantity * unitPrice),
+    });
+
+    if (error) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke legge til fakturalinje")}`);
+    }
+
+    try {
+      await recalculateInvoiceTotals(supabase, id, user.id);
+    } catch {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Linjen ble lagt til, men summer kunne ikke oppdateres")}`);
+    }
+
+    redirect(`/invoices/${id}?success=${encodeURIComponent("Ny fakturalinje lagt til")}`);
+  }
+
+  async function deleteInvoiceLine(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const lineId = String(formData.get("line_id") || "").trim();
+
+    if (!lineId) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Mangler linje-ID")}`);
+    }
+
+    const { error } = await supabase
+      .from("invoice_lines")
+      .delete()
+      .eq("id", lineId)
+      .eq("invoice_id", id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke slette fakturalinje")}`);
+    }
+
+    try {
+      await recalculateInvoiceTotals(supabase, id, user.id);
+    } catch {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Linjen ble slettet, men summer kunne ikke oppdateres")}`);
+    }
+
+    redirect(`/invoices/${id}?success=${encodeURIComponent("Fakturalinje slettet")}`);
+  }
+
+  async function markInvoiceSent() {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const { error } = await supabase
       .from("invoices")
       .update({
         status: "sent",
@@ -149,6 +412,10 @@ export default async function InvoicePage({
       .eq("id", id)
       .eq("user_id", user.id);
 
+    if (error) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke markere faktura som sendt")}`);
+    }
+
     redirect(`/invoices/${id}?success=${encodeURIComponent("Faktura markert som sendt")}`);
   }
 
@@ -156,7 +423,6 @@ export default async function InvoicePage({
     "use server";
 
     const supabase = await createClient();
-
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -165,7 +431,7 @@ export default async function InvoicePage({
       redirect("/login");
     }
 
-    await supabase
+    const { error } = await supabase
       .from("invoices")
       .update({
         status: "paid",
@@ -174,6 +440,10 @@ export default async function InvoicePage({
       .eq("id", id)
       .eq("user_id", user.id);
 
+    if (error) {
+      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke markere faktura som betalt")}`);
+    }
+
     redirect(`/invoices/${id}?success=${encodeURIComponent("Faktura markert som betalt")}`);
   }
 
@@ -181,7 +451,6 @@ export default async function InvoicePage({
     "use server";
 
     const supabase = await createClient();
-
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -194,9 +463,6 @@ export default async function InvoicePage({
 
     const response = await fetch(`${baseUrl}/api/invoices/${id}/send`, {
       method: "POST",
-      headers: {
-        Cookie: "",
-      },
       cache: "no-store",
     });
 
@@ -259,7 +525,7 @@ export default async function InvoicePage({
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <div className="mx-auto max-w-5xl px-6 py-12">
+      <div className="mx-auto max-w-6xl px-6 py-12">
         <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
@@ -290,20 +556,20 @@ export default async function InvoicePage({
               </span>
 
               <div className="flex flex-wrap gap-2">
-                <Link
+                <a
                   href="/dashboard"
                   className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
                 >
                   Dashboard
-                </Link>
+                </a>
 
                 {typedInvoice.offer_id ? (
-                  <Link
+                  <a
                     href={`/offers/${typedInvoice.offer_id}`}
                     className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
                   >
                     Tilbake til tilbud
-                  </Link>
+                  </a>
                 ) : null}
               </div>
             </div>
@@ -351,16 +617,58 @@ export default async function InvoicePage({
 
           <div className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
             <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
-              <h2 className="text-lg font-semibold">Fakturainnhold</h2>
+              <h2 className="text-lg font-semibold">Fakturahode</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Her kan du justere tittelen, beskrivelsen og forfallsdatoen før sending.
+              </p>
 
-              <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-black/5">
-                <p className="text-sm text-neutral-500">Beskrivelse</p>
-                <p className="mt-2 whitespace-pre-wrap">
-                  {typedInvoice.description || "-"}
-                </p>
-              </div>
+              <form action={updateInvoiceHeader} className="mt-4 space-y-4">
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                  <label className="block text-sm font-medium text-neutral-700">
+                    Fakturatittel
+                  </label>
+                  <input
+                    name="title"
+                    defaultValue={typedInvoice.title || ""}
+                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                    placeholder="F.eks. Faktura - bad renovering"
+                  />
+                </div>
 
-              <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                  <label className="block text-sm font-medium text-neutral-700">
+                    Beskrivelse / kommentar
+                  </label>
+                  <textarea
+                    name="description"
+                    rows={6}
+                    defaultValue={typedInvoice.description || ""}
+                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                    placeholder="F.eks. Tilleggsarbeid utført etter avtale med kunde..."
+                  />
+                </div>
+
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                  <label className="block text-sm font-medium text-neutral-700">
+                    Forfallsdato
+                  </label>
+                  <input
+                    type="date"
+                    name="due_date"
+                    defaultValue={toDateInputValue(typedInvoice.due_date)}
+                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white"
+                >
+                  Lagre fakturahode
+                </button>
+              </form>
+
+              <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-black/5">
                 <p className="text-sm text-neutral-500">Kundeinfo</p>
                 <p className="mt-2 font-medium">{customer.name}</p>
                 <div className="mt-2 flex flex-wrap gap-4 text-sm text-neutral-500">
@@ -373,8 +681,7 @@ export default async function InvoicePage({
             <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
               <h2 className="text-lg font-semibold">Handlinger</h2>
               <p className="mt-2 text-sm text-neutral-600">
-                Første versjon: send faktura på e-post, eller marker den manuelt
-                som sendt og betalt.
+                Rediger fakturaen ferdig først, og send den deretter til kunden.
               </p>
 
               <div className="mt-4 grid gap-3">
@@ -406,12 +713,12 @@ export default async function InvoicePage({
                   </button>
                 </form>
 
-                <Link
+                <a
                   href="/economy"
                   className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
                 >
                   Åpne økonomi
-                </Link>
+                </a>
               </div>
 
               {!hasCustomerEmail ? (
@@ -419,6 +726,14 @@ export default async function InvoicePage({
                   Kunden mangler e-postadresse, så faktura kan ikke sendes enda.
                 </div>
               ) : null}
+
+              <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                <p className="text-sm font-medium text-blue-900">Praktisk flyt</p>
+                <p className="mt-1 text-sm text-blue-800">
+                  Juster linjer og tekst her hvis det har kommet tilleggsarbeid,
+                  ekstra materialer eller andre endringer etter at tilbudet ble godkjent.
+                </p>
+              </div>
 
               <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4">
                 <p className="text-sm text-neutral-500">Statushistorikk</p>
@@ -436,7 +751,7 @@ export default async function InvoicePage({
               <div>
                 <p className="text-lg font-semibold">Fakturalinjer</p>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Linjene som ligger til grunn for fakturaen.
+                  Her kan du redigere eksisterende linjer, slette dem eller legge til nye.
                 </p>
               </div>
 
@@ -450,49 +765,231 @@ export default async function InvoicePage({
                 Ingen fakturalinjer på denne fakturaen.
               </p>
             ) : (
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 space-y-4">
                 {typedLines.map((line) => (
                   <div
                     key={line.id}
                     className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5"
                   >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium">{line.title}</p>
-                        {line.description ? (
-                          <p className="mt-1 text-sm text-neutral-500">
-                            {line.description}
-                          </p>
-                        ) : null}
+                    <form action={updateInvoiceLine} className="space-y-4">
+                      <input type="hidden" name="line_id" value={line.id} />
+
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700">
+                            Linjetittel
+                          </label>
+                          <input
+                            name="title"
+                            defaultValue={line.title}
+                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                            placeholder="F.eks. Ekstra materialer"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700">
+                            Kommentar / beskrivelse
+                          </label>
+                          <input
+                            name="description"
+                            defaultValue={line.description || ""}
+                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                            placeholder="F.eks. Ekstraarbeid etter avtale"
+                          />
+                        </div>
                       </div>
 
-                      <div className="grid gap-2 text-sm sm:grid-cols-3 lg:w-[420px]">
-                        <div className="rounded-xl bg-white p-3">
-                          <p className="text-neutral-500">Antall</p>
-                          <p className="mt-1 font-medium">
-                            {formatNumber(line.quantity)} {line.unit || ""}
-                          </p>
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700">
+                            Antall
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="quantity"
+                            defaultValue={line.quantity ?? 1}
+                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                          />
                         </div>
 
-                        <div className="rounded-xl bg-white p-3">
-                          <p className="text-neutral-500">Pris/enhet</p>
-                          <p className="mt-1 font-medium">
-                            {formatCurrency(line.unit_price)} kr
-                          </p>
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700">
+                            Enhet
+                          </label>
+                          <input
+                            name="unit"
+                            defaultValue={line.unit || ""}
+                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                            placeholder="stk"
+                          />
                         </div>
 
-                        <div className="rounded-xl bg-white p-3">
-                          <p className="text-neutral-500">Linjesum</p>
-                          <p className="mt-1 font-medium">
+                        <div>
+                          <label className="block text-sm font-medium text-neutral-700">
+                            Pris per enhet
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="unit_price"
+                            defaultValue={line.unit_price ?? 0}
+                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                          />
+                        </div>
+
+                        <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
+                          <p className="text-sm text-neutral-500">Nåværende linjesum</p>
+                          <p className="mt-1 text-lg font-bold">
                             {formatCurrency(line.line_total)} kr
                           </p>
+                          <p className="mt-1 text-xs text-neutral-500">
+                            Oppdateres ved lagring
+                          </p>
                         </div>
                       </div>
-                    </div>
+
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <button
+                          type="submit"
+                          className="rounded-2xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white"
+                        >
+                          Lagre linje
+                        </button>
+                      </div>
+                    </form>
+
+                    <form action={deleteInvoiceLine} className="mt-3">
+                      <input type="hidden" name="line_id" value={line.id} />
+                      <button
+                        type="submit"
+                        className="rounded-2xl border border-red-300 bg-white px-4 py-3 text-sm font-medium text-red-700"
+                      >
+                        Slett linje
+                      </button>
+                    </form>
                   </div>
                 ))}
               </div>
             )}
+          </section>
+
+          <section className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+            <h2 className="text-lg font-semibold text-emerald-900">Legg til ny linje</h2>
+            <p className="mt-1 text-sm text-emerald-800">
+              Bruk denne for tilleggsarbeid, ekstra materialer eller fratrekk.
+            </p>
+
+            <form action={addInvoiceLine} className="mt-4 space-y-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-emerald-900">
+                    Linjetittel
+                  </label>
+                  <input
+                    name="title"
+                    className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                    placeholder="F.eks. Tilleggsarbeid"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-emerald-900">
+                    Kommentar / beskrivelse
+                  </label>
+                  <input
+                    name="description"
+                    className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                    placeholder="F.eks. Utført etter avtale med kunde"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <label className="block text-sm font-medium text-emerald-900">
+                    Antall
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    name="quantity"
+                    defaultValue={1}
+                    className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-emerald-900">
+                    Enhet
+                  </label>
+                  <input
+                    name="unit"
+                    defaultValue="stk"
+                    className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-emerald-900">
+                    Pris per enhet
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    name="unit_price"
+                    defaultValue={0}
+                    className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                  />
+                </div>
+
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-emerald-100">
+                  <p className="text-sm text-emerald-800">Summer</p>
+                  <p className="mt-1 text-sm text-emerald-900">
+                    Regnes automatisk når linjen lagres
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white"
+              >
+                Legg til fakturalinje
+              </button>
+            </form>
+          </section>
+
+          <section className="mt-8 rounded-2xl bg-neutral-100 p-5">
+            <h2 className="text-lg font-semibold">Prisoppsummering</h2>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl bg-white p-4">
+                <p className="text-sm text-neutral-500">Subtotal</p>
+                <p className="mt-1 text-lg font-bold">
+                  {formatCurrency(typedInvoice.subtotal)} kr
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-white p-4">
+                <p className="text-sm text-neutral-500">MVA</p>
+                <p className="mt-1 text-lg font-bold">
+                  {formatCurrency(typedInvoice.vat_amount)} kr
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-white p-4">
+                <p className="text-sm text-neutral-500">Totalt</p>
+                <p className="mt-1 text-lg font-bold">
+                  {formatCurrency(typedInvoice.total)} kr
+                </p>
+              </div>
+            </div>
           </section>
         </div>
       </div>

@@ -60,6 +60,11 @@ type MaterialTemplate = {
   description: string | null;
 };
 
+type ExistingInvoice = {
+  id: string;
+  status: string | null;
+};
+
 type SearchParams = Promise<{
   error?: string;
   success?: string;
@@ -101,6 +106,14 @@ function getStatusClasses(status: string) {
   if (status === "rejected") return "bg-red-100 text-red-800";
   if (status === "expired") return "bg-red-200 text-red-900";
   return "bg-neutral-100 text-neutral-800";
+}
+
+function getInvoiceStatusLabel(status: string | null | undefined) {
+  if (status === "draft") return "Utkast";
+  if (status === "sent") return "Sendt";
+  if (status === "paid") return "Betalt";
+  if (status === "overdue") return "Forfalt";
+  return status || "Ukjent";
 }
 
 function formatDate(value: string | null) {
@@ -242,7 +255,10 @@ export default async function OfferPage({
       .maybeSingle();
 
     if (existingInvoiceError) {
-      console.error("Feil ved oppslag av eksisterende faktura:", existingInvoiceError);
+      console.error(
+        "Feil ved oppslag av eksisterende faktura:",
+        existingInvoiceError
+      );
       redirect(`/offers/${id}?error=Kunne+ikke+sjekke+eksisterende+faktura`);
     }
 
@@ -276,7 +292,9 @@ export default async function OfferPage({
     }
 
     if (sourceOffer.status !== "approved") {
-      redirect(`/offers/${id}?error=Faktura+kan+bare+opprettes+fra+godkjente+tilbud`);
+      redirect(
+        `/offers/${id}?error=Faktura+kan+bare+opprettes+fra+godkjente+tilbud`
+      );
     }
 
     const { data: sourceMaterials, error: sourceMaterialsError } = await supabase
@@ -289,7 +307,10 @@ export default async function OfferPage({
       .order("created_at", { ascending: true });
 
     if (sourceMaterialsError) {
-      console.error("Feil ved henting av materiallinjer for faktura:", sourceMaterialsError);
+      console.error(
+        "Feil ved henting av materiallinjer for faktura:",
+        sourceMaterialsError
+      );
       redirect(`/offers/${id}?error=Kunne+ikke+hente+materiallinjer`);
     }
 
@@ -428,7 +449,10 @@ export default async function OfferPage({
       .order("created_at", { ascending: true });
 
     if (sourceMaterialsError) {
-      console.error("Feil ved henting av materialer for mal:", sourceMaterialsError);
+      console.error(
+        "Feil ved henting av materialer for mal:",
+        sourceMaterialsError
+      );
       redirect(`/offers/${offerId}?error=Kunne+ikke+hente+materiallinjer`);
     }
 
@@ -441,9 +465,7 @@ export default async function OfferPage({
     }
 
     const description =
-      templateDescription ||
-      String(sourceOffer.description || "").trim() ||
-      null;
+      templateDescription || String(sourceOffer.description || "").trim() || null;
 
     const { data: createdTemplate, error: createTemplateError } = await supabase
       .from("material_templates")
@@ -456,7 +478,10 @@ export default async function OfferPage({
       .single();
 
     if (createTemplateError || !createdTemplate) {
-      console.error("Feil ved opprettelse av mal fra tilbud:", createTemplateError);
+      console.error(
+        "Feil ved opprettelse av mal fra tilbud:",
+        createTemplateError
+      );
       redirect(`/offers/${offerId}?error=Kunne+ikke+opprette+materialmal`);
     }
 
@@ -471,7 +496,10 @@ export default async function OfferPage({
       .insert(insertRows);
 
     if (insertItemsError) {
-      console.error("Feil ved opprettelse av mallinjer fra tilbud:", insertItemsError);
+      console.error(
+        "Feil ved opprettelse av mallinjer fra tilbud:",
+        insertItemsError
+      );
 
       await supabase
         .from("material_templates")
@@ -482,9 +510,7 @@ export default async function OfferPage({
       redirect(`/offers/${offerId}?error=Kunne+ikke+lagre+mallinjer`);
     }
 
-    redirect(
-      `/offers/${offerId}?success=Materialmal+opprettet+fra+tilbudet`
-    );
+    redirect(`/offers/${offerId}?success=Materialmal+opprettet+fra+tilbudet`);
   }
 
   async function updateExistingTemplateFromOffer(formData: FormData) {
@@ -514,7 +540,9 @@ export default async function OfferPage({
     }
 
     if (!templateId) {
-      redirect(`/offers/${offerId}?error=Velg+en+eksisterende+materialmal+f%C3%B8rst`);
+      redirect(
+        `/offers/${offerId}?error=Velg+en+eksisterende+materialmal+f%C3%B8rst`
+      );
     }
 
     const [
@@ -543,7 +571,10 @@ export default async function OfferPage({
     ]);
 
     if (sourceOfferError || !sourceOffer) {
-      console.error("Feil ved henting av tilbud for maloppdatering:", sourceOfferError);
+      console.error(
+        "Feil ved henting av tilbud for maloppdatering:",
+        sourceOfferError
+      );
       redirect(`/offers/${offerId}?error=Kunne+ikke+hente+tilbudet`);
     }
 
@@ -553,7 +584,10 @@ export default async function OfferPage({
     }
 
     if (sourceMaterialsError) {
-      console.error("Feil ved henting av materialer for maloppdatering:", sourceMaterialsError);
+      console.error(
+        "Feil ved henting av materialer for maloppdatering:",
+        sourceMaterialsError
+      );
       redirect(`/offers/${offerId}?error=Kunne+ikke+hente+materiallinjer`);
     }
 
@@ -592,7 +626,10 @@ export default async function OfferPage({
         .eq("user_id", user.id);
 
       if (updateTemplateError) {
-        console.error("Feil ved oppdatering av materialmal:", updateTemplateError);
+        console.error(
+          "Feil ved oppdatering av materialmal:",
+          updateTemplateError
+        );
         redirect(`/offers/${offerId}?error=Kunne+ikke+oppdatere+maldetaljer`);
       }
     }
@@ -605,8 +642,13 @@ export default async function OfferPage({
         .eq("user_id", user.id);
 
       if (deleteItemsError) {
-        console.error("Feil ved tømming av eksisterende mallinjer:", deleteItemsError);
-        redirect(`/offers/${offerId}?error=Kunne+ikke+t%C3%B8mme+eksisterende+mallinjer`);
+        console.error(
+          "Feil ved tømming av eksisterende mallinjer:",
+          deleteItemsError
+        );
+        redirect(
+          `/offers/${offerId}?error=Kunne+ikke+t%C3%B8mme+eksisterende+mallinjer`
+        );
       }
 
       const { error: insertItemsError } = await supabase
@@ -630,7 +672,10 @@ export default async function OfferPage({
       .eq("user_id", user.id);
 
     if (existingItemsError) {
-      console.error("Feil ved henting av eksisterende mallinjer:", existingItemsError);
+      console.error(
+        "Feil ved henting av eksisterende mallinjer:",
+        existingItemsError
+      );
       redirect(`/offers/${offerId}?error=Kunne+ikke+hente+eksisterende+mallinjer`);
     }
 
@@ -671,8 +716,13 @@ export default async function OfferPage({
         .eq("user_id", user.id);
 
       if (updateItemError) {
-        console.error("Feil ved oppdatering av eksisterende mallinje:", updateItemError);
-        redirect(`/offers/${offerId}?error=Kunne+ikke+oppdatere+eksisterende+mallinje`);
+        console.error(
+          "Feil ved oppdatering av eksisterende mallinje:",
+          updateItemError
+        );
+        redirect(
+          `/offers/${offerId}?error=Kunne+ikke+oppdatere+eksisterende+mallinje`
+        );
       }
     }
 
@@ -682,7 +732,10 @@ export default async function OfferPage({
         .insert(rowsToInsert);
 
       if (insertNewItemsError) {
-        console.error("Feil ved innlegging av nye mallinjer:", insertNewItemsError);
+        console.error(
+          "Feil ved innlegging av nye mallinjer:",
+          insertNewItemsError
+        );
         redirect(`/offers/${offerId}?error=Kunne+ikke+legge+til+nye+mallinjer`);
       }
     }
@@ -752,6 +805,7 @@ export default async function OfferPage({
 
   const typedOffer = offer as OfferRow;
   const materialTemplates = (templates as MaterialTemplate[] | null) || [];
+  const typedExistingInvoice = (existingInvoice as ExistingInvoice | null) || null;
 
   const { data: offerMaterials, error: offerMaterialsError } = await supabase
     .from("offer_materials")
@@ -800,7 +854,10 @@ export default async function OfferPage({
   const missingLinkedMaterialRows = totalMaterialRows - linkedMaterialRows;
   const canCreateTemplate = linkedMaterialRows > 0;
   const canCreateInvoice = displayStatus === "approved";
-  const existingInvoiceId = String(existingInvoice?.id || "").trim();
+  const existingInvoiceId = String(typedExistingInvoice?.id || "").trim();
+  const existingInvoiceStatusLabel = getInvoiceStatusLabel(
+    typedExistingInvoice?.status
+  );
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -835,12 +892,12 @@ export default async function OfferPage({
                 {getStatusLabel(displayStatus)}
               </span>
 
-              <Link
+              <a
                 href="/dashboard"
                 className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
               >
                 Tilbake til dashboard
-              </Link>
+              </a>
             </div>
           </div>
 
@@ -951,7 +1008,7 @@ export default async function OfferPage({
             <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
               <h2 className="text-lg font-semibold">Handlinger og maler</h2>
               <p className="mt-2 text-sm text-neutral-600">
-                Herfra kan du åpne PDF, sende e-post, dele kundelenken, lage
+                Herfra kan du åpne PDF, sende e-post, dele kundelenken, opprette
                 faktura og bygge materialmaler fra tilbudet.
               </p>
 
@@ -984,12 +1041,12 @@ export default async function OfferPage({
                 </form>
 
                 {existingInvoiceId ? (
-                  <Link
+                  <a
                     href={`/invoices/${existingInvoiceId}`}
                     className="rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white"
                   >
                     Åpne faktura
-                  </Link>
+                  </a>
                 ) : (
                   <form action={createInvoiceFromOffer}>
                     <button
@@ -997,17 +1054,17 @@ export default async function OfferPage({
                       disabled={!canCreateInvoice}
                       className="w-full rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Lag faktura
+                      Opprett faktura
                     </button>
                   </form>
                 )}
 
-                <Link
+                <a
                   href="/materials"
                   className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
                 >
                   Åpne materialmaler
-                </Link>
+                </a>
               </div>
 
               {!canCreateInvoice && !existingInvoiceId ? (
@@ -1018,7 +1075,18 @@ export default async function OfferPage({
 
               {existingInvoiceId ? (
                 <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
-                  Dette tilbudet har allerede en faktura koblet til seg.
+                  Dette tilbudet har allerede en faktura koblet til seg. Status:
+                  {" "}
+                  <span className="font-semibold">{existingInvoiceStatusLabel}</span>
+                  .
+                </div>
+              ) : null}
+
+              {canCreateInvoice && !existingInvoiceId ? (
+                <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  Når du oppretter faktura, sendes du videre til fakturasiden der
+                  du kan redigere linjer, legge til ekstraarbeid og skrive
+                  kommentarer før sending.
                 </div>
               ) : null}
 
@@ -1040,7 +1108,9 @@ export default async function OfferPage({
 
                   <div className="rounded-2xl bg-neutral-50 p-3">
                     <p className="text-xs text-neutral-500">Mangler kobling</p>
-                    <p className="mt-1 text-lg font-bold">{missingLinkedMaterialRows}</p>
+                    <p className="mt-1 text-lg font-bold">
+                      {missingLinkedMaterialRows}
+                    </p>
                   </div>
                 </div>
 
@@ -1107,7 +1177,10 @@ export default async function OfferPage({
                   oppdatere og legge til materialer.
                 </p>
 
-                <form action={updateExistingTemplateFromOffer} className="mt-4 space-y-3">
+                <form
+                  action={updateExistingTemplateFromOffer}
+                  className="mt-4 space-y-3"
+                >
                   <input type="hidden" name="offerId" value={typedOffer.id} />
 
                   <div>
@@ -1145,7 +1218,9 @@ export default async function OfferPage({
                           disabled={!canCreateTemplate || materialTemplates.length === 0}
                         />
                         <span>
-                          <span className="block font-medium">Erstatt hele malen</span>
+                          <span className="block font-medium">
+                            Erstatt hele malen
+                          </span>
                           <span className="block text-amber-800">
                             Sletter eksisterende mallinjer og legger inn nøyaktig
                             det som finnes i dette tilbudet.
@@ -1192,7 +1267,9 @@ export default async function OfferPage({
                         className="h-4 w-4"
                         disabled={!canCreateTemplate || materialTemplates.length === 0}
                       />
-                      <span>Oppdater også beskrivelse på malen fra tilbudsteksten</span>
+                      <span>
+                        Oppdater også beskrivelse på malen fra tilbudsteksten
+                      </span>
                     </label>
                   </div>
 

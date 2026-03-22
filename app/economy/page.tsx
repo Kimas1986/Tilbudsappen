@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -122,6 +121,7 @@ function getInvoiceStatusLabel(status: string) {
   if (status === "draft") return "Utkast";
   if (status === "sent") return "Sendt";
   if (status === "paid") return "Betalt";
+  if (status === "overdue") return "Forfalt";
   if (status === "cancelled") return "Kreditert";
   return status;
 }
@@ -130,6 +130,7 @@ function getInvoiceStatusClasses(status: string) {
   if (status === "draft") return "bg-yellow-100 text-yellow-800";
   if (status === "sent") return "bg-blue-100 text-blue-800";
   if (status === "paid") return "bg-green-100 text-green-800";
+  if (status === "overdue") return "bg-orange-100 text-orange-800";
   if (status === "cancelled") return "bg-red-100 text-red-800";
   return "bg-neutral-100 text-neutral-800";
 }
@@ -149,7 +150,7 @@ function EconomyCard({
 }: {
   title: string;
   value: string;
-  accent?: "neutral" | "green" | "blue" | "emerald";
+  accent?: "neutral" | "green" | "blue" | "emerald" | "orange";
 }) {
   const classes =
     accent === "green"
@@ -158,7 +159,9 @@ function EconomyCard({
         ? "bg-blue-50 ring-1 ring-blue-100"
         : accent === "emerald"
           ? "bg-emerald-50 ring-1 ring-emerald-100"
-          : "bg-neutral-100 ring-1 ring-black/5";
+          : accent === "orange"
+            ? "bg-orange-50 ring-1 ring-orange-100"
+            : "bg-neutral-100 ring-1 ring-black/5";
 
   const textClasses =
     accent === "green"
@@ -167,7 +170,9 @@ function EconomyCard({
         ? "text-blue-900"
         : accent === "emerald"
           ? "text-emerald-900"
-          : "text-neutral-900";
+          : accent === "orange"
+            ? "text-orange-900"
+            : "text-neutral-900";
 
   return (
     <div className={`rounded-2xl p-5 ${classes}`}>
@@ -321,10 +326,14 @@ export default async function EconomyPage() {
   const paidInvoices = typedInvoices.filter((invoice) => invoice.status === "paid");
   const sentInvoices = typedInvoices.filter((invoice) => invoice.status === "sent");
   const draftInvoices = typedInvoices.filter((invoice) => invoice.status === "draft");
+  const overdueInvoices = typedInvoices.filter(
+    (invoice) => invoice.status === "overdue"
+  );
 
   const totalInvoicedValue = sumInvoiceValues(paidInvoices);
   const outstandingInvoiceValue = sumInvoiceValues(sentInvoices);
   const draftInvoiceValue = sumInvoiceValues(draftInvoices);
+  const overdueInvoiceValue = sumInvoiceValues(overdueInvoices);
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -336,38 +345,39 @@ export default async function EconomyPage() {
               <h1 className="mt-1 text-3xl font-bold tracking-tight">Økonomi</h1>
               <p className="mt-4 text-sm text-neutral-600">
                 Her ser du det viktigste: hva som er landet, hva som venter svar,
-                hva som er fakturert, og hva du faktisk tjener på godkjente tilbud.
+                hva som er fakturert, hva som er utestående, og estimert
+                fortjeneste på godkjente tilbud.
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:w-[420px]">
-              <Link
+              <a
                 href="/dashboard"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Dashboard
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/offers/new"
                 className="rounded-2xl bg-black px-5 py-3 text-center text-sm font-medium text-white"
               >
                 + Nytt tilbud
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/materials"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Materialdatabase
-              </Link>
+              </a>
 
-              <Link
+              <a
                 href="/invoices"
                 className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
               >
                 Fakturaer
-              </Link>
+              </a>
             </div>
           </div>
 
@@ -473,7 +483,8 @@ export default async function EconomyPage() {
             <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
               <h2 className="text-lg font-semibold">Fakturastatus</h2>
               <p className="mt-2 text-sm text-neutral-600">
-                Oversikt over hva som er sendt, betalt og fortsatt ligger som kladd.
+                Oversikt over hva som er sendt, betalt, forfalt og fortsatt ligger
+                som utkast.
               </p>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -486,12 +497,20 @@ export default async function EconomyPage() {
                   value={`${formatCurrency(outstandingInvoiceValue)} kr`}
                 />
                 <DetailCard
-                  label="Fakturakladder"
+                  label="Forfalte fakturaer"
+                  value={`${formatCurrency(overdueInvoiceValue)} kr`}
+                />
+                <DetailCard
+                  label="Fakturautkast"
                   value={`${formatCurrency(draftInvoiceValue)} kr`}
                 />
                 <DetailCard
                   label="Betalte fakturaer"
                   value={`${paidInvoices.length} stk`}
+                />
+                <DetailCard
+                  label="Forfalte fakturaer"
+                  value={`${overdueInvoices.length} stk`}
                 />
               </div>
             </section>
@@ -505,12 +524,12 @@ export default async function EconomyPage() {
                   </p>
                 </div>
 
-                <Link
+                <a
                   href="/invoices"
                   className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
                 >
                   Åpne alle
-                </Link>
+                </a>
               </div>
 
               {typedRecentInvoices.length === 0 ? (
@@ -522,7 +541,7 @@ export default async function EconomyPage() {
               ) : (
                 <div className="mt-4 space-y-3">
                   {typedRecentInvoices.map((invoice) => (
-                    <Link
+                    <a
                       key={invoice.id}
                       href={`/invoices/${invoice.id}`}
                       className="block rounded-2xl bg-white p-4 ring-1 ring-black/5 transition hover:bg-neutral-50"
@@ -555,7 +574,7 @@ export default async function EconomyPage() {
                           </p>
                         </div>
                       </div>
-                    </Link>
+                    </a>
                   ))}
                 </div>
               )}
