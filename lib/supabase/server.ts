@@ -18,7 +18,8 @@ export async function createClient() {
               cookieStore.set(name, value, options);
             });
           } catch {
-            // Ignoreres i server components.
+            // Cookies kan ikke alltid skrives fra alle server-kontekster.
+            // Proxy håndterer refresh og vedlikehold av auth-cookies.
           }
         },
       },
