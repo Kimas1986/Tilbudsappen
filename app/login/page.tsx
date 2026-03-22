@@ -1,17 +1,14 @@
-"use client";
-
 import Link from "next/link";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 
-function getSafeNextPath() {
-  if (typeof window === "undefined") {
-    return "/dashboard";
-  }
+type SearchParams = Promise<{
+  next?: string;
+  error?: string;
+}>;
 
-  const params = new URLSearchParams(window.location.search);
-  const next = params.get("next");
+function getSafeNextPath(nextValue: string | undefined) {
+  const next = String(nextValue || "").trim();
 
   if (next && next.startsWith("/") && !next.startsWith("//")) {
     return next;
@@ -20,45 +17,44 @@ function getSafeNextPath() {
   return "/dashboard";
 }
 
-export default function LoginPage() {
-  const router = useRouter();
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const nextPath = getSafeNextPath(resolvedSearchParams?.next);
+  const errorMessage = String(resolvedSearchParams?.error || "").trim();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  async function login(formData: FormData) {
+    "use server";
 
-  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError("");
+    const supabase = await createClient();
 
-    const supabase = createClient();
+    const email = String(formData.get("email") || "").trim();
+    const password = String(formData.get("password") || "");
+    const next = getSafeNextPath(String(formData.get("next") || ""));
 
-    try {
-      setLoading(true);
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-
-      if (error) {
-        setError(error.message || "Kunne ikke logge inn");
-        return;
-      }
-
-      await supabase.auth.refreshSession();
-
-      const target = getSafeNextPath();
-
-      router.replace(target);
-      router.refresh();
-    } catch (err) {
-      console.error("Login error:", err);
-      setError("Uventet feil ved innlogging");
-    } finally {
-      setLoading(false);
+    if (!email || !password) {
+      redirect(
+        `/login?error=${encodeURIComponent("Fyll inn e-post og passord")}&next=${encodeURIComponent(next)}`
+      );
     }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      redirect(
+        `/login?error=${encodeURIComponent(
+          error.message || "Kunne ikke logge inn"
+        )}&next=${encodeURIComponent(next)}`
+      );
+    }
+
+    redirect(next);
   }
 
   return (
@@ -73,14 +69,15 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="mt-8 space-y-4">
+          <form action={login} className="mt-8 space-y-4">
+            <input type="hidden" name="next" value={nextPath} />
+
             <div>
               <label className="block text-sm font-medium">E-post</label>
               <input
+                name="email"
                 type="email"
                 autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                 placeholder="deg@firma.no"
                 required
@@ -90,28 +87,26 @@ export default function LoginPage() {
             <div>
               <label className="block text-sm font-medium">Passord</label>
               <input
+                name="password"
                 type="password"
                 autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
                 placeholder="Passord"
                 required
               />
             </div>
 
-            {error ? (
+            {errorMessage ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
+                {errorMessage}
               </div>
             ) : null}
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full rounded-2xl bg-black px-4 py-4 text-sm font-medium text-white disabled:opacity-60"
+              className="w-full rounded-2xl bg-black px-4 py-4 text-sm font-medium text-white"
             >
-              {loading ? "Logger inn..." : "Logg inn"}
+              Logg inn
             </button>
           </form>
 
