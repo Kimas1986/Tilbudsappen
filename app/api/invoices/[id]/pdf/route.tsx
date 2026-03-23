@@ -154,9 +154,9 @@ function getCompanyAddressLine(settings: Settings) {
 
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 36,
-    paddingBottom: 36,
-    paddingHorizontal: 36,
+    paddingTop: 34,
+    paddingBottom: 34,
+    paddingHorizontal: 34,
     fontSize: 10,
     fontFamily: "Helvetica",
     color: "#171717",
@@ -169,10 +169,10 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   companyBlock: {
-    width: "52%",
+    width: "54%",
   },
-  invoiceMetaBlock: {
-    width: "44%",
+  metaBlock: {
+    width: "42%",
     borderWidth: 1,
     borderColor: "#e5e5e5",
     borderRadius: 12,
@@ -207,6 +207,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderBottomWidth: 1,
     borderBottomColor: "#ececec",
+  },
+  metaRowLast: {
+    borderBottomWidth: 0,
   },
   metaLabel: {
     fontSize: 10,
@@ -429,7 +432,7 @@ function InvoicePdfDocument({
             ) : null}
           </View>
 
-          <View style={styles.invoiceMetaBlock}>
+          <View style={styles.metaBlock}>
             <Text style={styles.sectionLabel}>Dokument</Text>
             <Text style={styles.invoiceTitle}>Faktura</Text>
 
@@ -448,7 +451,7 @@ function InvoicePdfDocument({
               <Text style={styles.metaValue}>{formatDate(invoice.created_at)}</Text>
             </View>
 
-            <View style={[styles.metaRow, styles.rowLast]}>
+            <View style={[styles.metaRow, styles.metaRowLast]}>
               <Text style={styles.metaLabel}>Forfall</Text>
               <Text style={styles.metaValue}>{formatDate(invoice.due_date)}</Text>
             </View>
@@ -523,7 +526,9 @@ function InvoicePdfDocument({
                   <View style={[styles.cell, styles.cellDescription]}>
                     <Text style={styles.lineTitle}>{line.title || "Linje"}</Text>
                     {line.description ? (
-                      <Text style={styles.lineDescription}>{line.description}</Text>
+                      <Text style={styles.lineDescription}>
+                        {line.description}
+                      </Text>
                     ) : null}
                   </View>
 
