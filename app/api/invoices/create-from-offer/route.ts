@@ -24,6 +24,54 @@ function addDays(days: number) {
   return date.toISOString();
 }
 
+function getInvoiceYear() {
+  return new Date().getFullYear();
+}
+
+function buildInvoiceNumber(year: number, sequence: number) {
+  return `${year}-${String(sequence).padStart(4, "0")}`;
+}
+
+function parseInvoiceSequence(invoiceNumber: string | null | undefined, year: number) {
+  const value = String(invoiceNumber || "").trim();
+  const match = value.match(/^(\d{4})-(\d{4})$/);
+
+  if (!match) return null;
+
+  const parsedYear = Number(match[1]);
+  const parsedSequence = Number(match[2]);
+
+  if (parsedYear !== year) return null;
+  if (!Number.isFinite(parsedSequence)) return null;
+
+  return parsedSequence;
+}
+
+async function generateNextInvoiceNumber(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+) {
+  const year = getInvoiceYear();
+
+  const { data: invoices, error } = await supabase
+    .from("invoices")
+    .select("invoice_number")
+    .eq("user_id", userId)
+    .not("invoice_number", "is", null);
+
+  if (error) {
+    throw new Error("Kunne ikke hente eksisterende fakturanumre.");
+  }
+
+  const maxSequence = (invoices || []).reduce((max, row) => {
+    const current = parseInvoiceSequence(row.invoice_number, year);
+    if (current === null) return max;
+    return Math.max(max, current);
+  }, 0);
+
+  return buildInvoiceNumber(year, maxSequence + 1);
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -45,7 +93,7 @@ export async function POST(request: Request) {
 
     const { data: existingInvoice } = await supabase
       .from("invoices")
-      .select("id")
+      .select("id, invoice_number")
       .eq("offer_id", offerId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -54,6 +102,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         invoiceId: existingInvoice.id,
+        invoiceNumber: existingInvoice.invoice_number || null,
         alreadyExists: true,
       });
     }
@@ -86,10 +135,7 @@ export async function POST(request: Request) {
     if (offerError || !offer) {
       console.error("Feil ved henting av tilbud:", offerError);
 
-      return NextResponse.json(
-        { error: "Fant ikke tilbud" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Fant ikke tilbud" }, { status: 404 });
     }
 
     if (offer.status !== "approved") {
@@ -134,12 +180,15 @@ export async function POST(request: Request) {
     const vatAmount = toNumber(offer.vat_amount);
     const total = toNumber(offer.total);
 
+    const invoiceNumber = await generateNextInvoiceNumber(supabase, user.id);
+
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoices")
       .insert({
         user_id: user.id,
         offer_id: offer.id,
         customer_id: offer.customer_id || null,
+        invoice_number: invoiceNumber,
         title,
         description,
         status: "draft",
@@ -148,7 +197,7 @@ export async function POST(request: Request) {
         total,
         due_date: addDays(14),
       })
-      .select("id")
+      .select("id, invoice_number")
       .single();
 
     if (invoiceError || !invoice) {
@@ -211,6 +260,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       invoiceId: invoice.id,
+      invoiceNumber: invoice.invoice_number || invoiceNumber,
     });
   } catch (error) {
     console.error("Create invoice from offer API error:", error);
