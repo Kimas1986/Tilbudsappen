@@ -23,6 +23,16 @@ type OfferRow = {
     | null;
 };
 
+type InvoiceRow = {
+  id: string;
+  invoice_number: string | null;
+  status: string;
+  total: number | null;
+  due_date: string | null;
+  paid_at: string | null;
+  created_at: string | null;
+};
+
 function isExpired(validUntil: string | null) {
   if (!validUntil) return false;
   const date = new Date(validUntil);
@@ -34,6 +44,23 @@ function getDisplayStatus(offer: OfferRow) {
   if (offer.status === "approved") return "approved";
   if (isExpired(offer.valid_until)) return "expired";
   return offer.status;
+}
+
+function isInvoiceOverdue(invoice: InvoiceRow) {
+  if (invoice.status !== "sent") return false;
+  if (!invoice.due_date) return false;
+
+  const dueDate = new Date(invoice.due_date);
+  if (Number.isNaN(dueDate.getTime())) return false;
+
+  return dueDate.getTime() < Date.now();
+}
+
+function getInvoiceDisplayStatus(invoice: InvoiceRow) {
+  if (invoice.status === "paid") return "paid";
+  if (invoice.status === "cancelled") return "cancelled";
+  if (isInvoiceOverdue(invoice)) return "overdue";
+  return invoice.status;
 }
 
 function getStatusLabel(status: string) {
@@ -52,6 +79,15 @@ function getStatusClasses(status: string) {
   if (status === "rejected") return "bg-red-100 text-red-800";
   if (status === "expired") return "bg-red-200 text-red-900";
   return "bg-neutral-100 text-neutral-800";
+}
+
+function getInvoiceStatusLabel(status: string) {
+  if (status === "draft") return "Utkast";
+  if (status === "sent") return "Sendt";
+  if (status === "paid") return "Betalt";
+  if (status === "overdue") return "Forfalt";
+  if (status === "cancelled") return "Kreditert";
+  return status;
 }
 
 function getCustomerName(offer: OfferRow) {
@@ -91,6 +127,19 @@ function sumOfferValues(offers: OfferRow[], statuses?: string[]) {
     }
 
     return sum + Number(offer.total || 0);
+  }, 0);
+}
+
+function sumInvoiceValues(
+  invoices: Array<InvoiceRow & { displayStatus: string }>,
+  statuses?: string[]
+) {
+  return invoices.reduce((sum, invoice) => {
+    if (statuses && !statuses.includes(invoice.displayStatus)) {
+      return sum;
+    }
+
+    return sum + Number(invoice.total || 0);
   }, 0);
 }
 
@@ -138,18 +187,35 @@ export default async function DashboardPage() {
     redirect("/dashboard");
   }
 
-  const { data: offers, error } = await supabase
-    .from("offers")
-    .select(
-      "id, title, total, status, description, created_at, valid_until, approved_at, customers(name)"
-    )
-    .order("created_at", { ascending: false });
+  const [{ data: offers, error: offersError }, { data: invoices, error: invoicesError }] =
+    await Promise.all([
+      supabase
+        .from("offers")
+        .select(
+          "id, title, total, status, description, created_at, valid_until, approved_at, customers(name)"
+        )
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("invoices")
+        .select("id, invoice_number, status, total, due_date, paid_at, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+    ]);
 
-  if (error) {
-    console.error("Feil ved henting av tilbud:", error);
+  if (offersError) {
+    console.error("Feil ved henting av tilbud:", offersError);
+  }
+
+  if (invoicesError) {
+    console.error("Feil ved henting av fakturaer:", invoicesError);
   }
 
   const typedOffers = (offers as OfferRow[] | null) || [];
+  const typedInvoices = ((invoices as InvoiceRow[] | null) || []).map((invoice) => ({
+    ...invoice,
+    displayStatus: getInvoiceDisplayStatus(invoice),
+  }));
 
   const draftCount = getStatusCount(typedOffers, "draft");
   const sentCount = getStatusCount(typedOffers, "sent");
@@ -159,6 +225,17 @@ export default async function DashboardPage() {
   const totalSentValue = sumOfferValues(typedOffers, ["sent"]);
   const totalApprovedValue = sumOfferValues(typedOffers, ["approved"]);
   const totalDraftValue = sumOfferValues(typedOffers, ["draft"]);
+
+  const paidInvoiceValue = sumInvoiceValues(typedInvoices, ["paid"]);
+  const sentInvoiceValue = sumInvoiceValues(typedInvoices, ["sent"]);
+  const overdueInvoiceValue = sumInvoiceValues(typedInvoices, ["overdue"]);
+
+  const paidInvoiceCount = typedInvoices.filter(
+    (invoice) => invoice.displayStatus === "paid"
+  ).length;
+  const overdueInvoiceCount = typedInvoices.filter(
+    (invoice) => invoice.displayStatus === "overdue"
+  ).length;
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
@@ -267,6 +344,48 @@ export default async function DashboardPage() {
             </div>
           </div>
 
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl bg-neutral-100 p-5 ring-1 ring-black/5">
+              <p className="text-sm text-neutral-500">Totalt fakturert</p>
+              <p className="mt-2 text-2xl font-bold text-neutral-900">
+                {formatCurrency(paidInvoiceValue)} kr
+              </p>
+              <p className="mt-2 text-sm text-neutral-600">
+                {paidInvoiceCount} betalte fakturaer
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-blue-50 p-5 ring-1 ring-blue-100">
+              <p className="text-sm text-blue-800">Utestående fakturaer</p>
+              <p className="mt-2 text-2xl font-bold text-blue-900">
+                {formatCurrency(sentInvoiceValue)} kr
+              </p>
+              <p className="mt-2 text-sm text-blue-900/80">
+                Sendt, men ikke betalt
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-orange-50 p-5 ring-1 ring-orange-100">
+              <p className="text-sm text-orange-800">Forfalt</p>
+              <p className="mt-2 text-2xl font-bold text-orange-900">
+                {formatCurrency(overdueInvoiceValue)} kr
+              </p>
+              <p className="mt-2 text-sm text-orange-900/80">
+                {overdueInvoiceCount} forfalte fakturaer
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-neutral-100 p-5 ring-1 ring-black/5">
+              <p className="text-sm text-neutral-500">Fakturamodul</p>
+              <p className="mt-2 text-2xl font-bold text-neutral-900">
+                {typedInvoices.length}
+              </p>
+              <p className="mt-2 text-sm text-neutral-600">
+                Totalt opprettede fakturaer
+              </p>
+            </div>
+          </div>
+
           <div className="mt-10">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -353,6 +472,62 @@ export default async function DashboardPage() {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-10">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">Fakturastatus</h2>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Rask oversikt over betalt, utestående og forfalt.
+                </p>
+              </div>
+
+              <a
+                href="/invoices"
+                className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
+              >
+                Åpne fakturaer
+              </a>
+            </div>
+
+            {typedInvoices.length === 0 ? (
+              <div className="mt-4 rounded-2xl bg-neutral-50 p-6 ring-1 ring-black/5">
+                <p className="text-neutral-500">Ingen fakturaer enda.</p>
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
+                  <p className="text-sm text-neutral-500">Betalt</p>
+                  <p className="mt-2 text-xl font-bold text-green-700">
+                    {formatCurrency(paidInvoiceValue)} kr
+                  </p>
+                  <p className="mt-2 text-sm text-neutral-500">
+                    {paidInvoiceCount} stk • {getInvoiceStatusLabel("paid")}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
+                  <p className="text-sm text-neutral-500">Utestående</p>
+                  <p className="mt-2 text-xl font-bold text-blue-700">
+                    {formatCurrency(sentInvoiceValue)} kr
+                  </p>
+                  <p className="mt-2 text-sm text-neutral-500">
+                    Sendt til kunde
+                  </p>
+                </div>
+
+                <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
+                  <p className="text-sm text-neutral-500">Forfalt</p>
+                  <p className="mt-2 text-xl font-bold text-orange-700">
+                    {formatCurrency(overdueInvoiceValue)} kr
+                  </p>
+                  <p className="mt-2 text-sm text-neutral-500">
+                    {overdueInvoiceCount} stk • {getInvoiceStatusLabel("overdue")}
+                  </p>
+                </div>
               </div>
             )}
           </div>
