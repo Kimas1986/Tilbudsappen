@@ -19,8 +19,30 @@
   }
 }
 
+html {
+  background: var(--background);
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+a,
+button,
+[role="button"],
+input[type="submit"],
+input[type="button"],
+input[type="reset"],
+label:has(input),
+summary {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  cursor: not-allowed;
 }

@@ -1019,7 +1019,7 @@ export default async function OfferPage({
                   href={pdfUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white"
+                  className="cursor-pointer rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white"
                 >
                   Åpne PDF
                 </a>
@@ -1028,7 +1028,7 @@ export default async function OfferPage({
                   href={pdfUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
+                  className="cursor-pointer rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
                 >
                   Last ned PDF
                 </a>
@@ -1036,7 +1036,7 @@ export default async function OfferPage({
                 <form action={sendUrl} method="post">
                   <button
                     type="submit"
-                    className="w-full rounded-2xl bg-blue-600 px-4 py-3 text-center text-sm font-medium text-white"
+                    className="w-full cursor-pointer rounded-2xl bg-blue-600 px-4 py-3 text-center text-sm font-medium text-white"
                   >
                     Send tilbud på e-post
                   </button>
@@ -1045,7 +1045,7 @@ export default async function OfferPage({
                 {existingInvoiceId ? (
                   <Link
                     href={`/invoices/${existingInvoiceId}`}
-                    className="rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white"
+                    className="cursor-pointer rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white"
                   >
                     Åpne faktura
                   </Link>
@@ -1054,7 +1054,7 @@ export default async function OfferPage({
                     <button
                       type="submit"
                       disabled={!canCreateInvoice}
-                      className="w-full rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full cursor-pointer rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Lag faktura
                     </button>
@@ -1063,7 +1063,7 @@ export default async function OfferPage({
 
                 <Link
                   href="/materials"
-                  className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
+                  className="cursor-pointer rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
                 >
                   Åpne materialmaler
                 </Link>
@@ -1151,7 +1151,7 @@ export default async function OfferPage({
                   <button
                     type="submit"
                     disabled={!canCreateTemplate}
-                    className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full cursor-pointer rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Lag materialmal fra tilbud
                   </button>
@@ -1195,7 +1195,7 @@ export default async function OfferPage({
                     </label>
 
                     <div className="mt-2 space-y-3 rounded-2xl bg-white p-4">
-                      <label className="flex items-start gap-3 text-sm text-amber-900">
+                      <label className="flex cursor-pointer items-start gap-3 text-sm text-amber-900">
                         <input
                           type="radio"
                           name="syncMode"
@@ -1213,7 +1213,7 @@ export default async function OfferPage({
                         </span>
                       </label>
 
-                      <label className="flex items-start gap-3 text-sm text-amber-900">
+                      <label className="flex cursor-pointer items-start gap-3 text-sm text-amber-900">
                         <input
                           type="radio"
                           name="syncMode"
@@ -1235,7 +1235,7 @@ export default async function OfferPage({
                   </div>
 
                   <div className="space-y-3 rounded-2xl bg-white p-4">
-                    <label className="flex items-center gap-3 text-sm text-amber-900">
+                    <label className="flex cursor-pointer items-center gap-3 text-sm text-amber-900">
                       <input
                         type="checkbox"
                         name="overwriteName"
@@ -1245,7 +1245,7 @@ export default async function OfferPage({
                       <span>Oppdater også navn på malen fra tilbudstittelen</span>
                     </label>
 
-                    <label className="flex items-center gap-3 text-sm text-amber-900">
+                    <label className="flex cursor-pointer items-center gap-3 text-sm text-amber-900">
                       <input
                         type="checkbox"
                         name="overwriteDescription"
@@ -1259,7 +1259,7 @@ export default async function OfferPage({
                   <button
                     type="submit"
                     disabled={!canCreateTemplate || materialTemplates.length === 0}
-                    className="w-full rounded-2xl bg-amber-500 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full cursor-pointer rounded-2xl bg-amber-500 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Oppdater valgt materialmal
                   </button>
@@ -1284,7 +1284,7 @@ export default async function OfferPage({
                     <>
                       <Link
                         href={publicUrl}
-                        className="rounded-2xl bg-black px-4 py-3 text-center text-sm font-medium text-white"
+                        className="cursor-pointer rounded-2xl bg-black px-4 py-3 text-center text-sm font-medium text-white"
                       >
                         Åpne kundelenke
                       </Link>

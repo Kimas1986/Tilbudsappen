@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 type PublicOffer = {
@@ -14,6 +14,7 @@ type PublicOffer = {
   created_at: string | null;
   valid_until: string | null;
   approved_at: string | null;
+  share_token: string | null;
 };
 
 type CompanySettings = {
@@ -21,6 +22,10 @@ type CompanySettings = {
   contact_name: string | null;
   contact_phone: string | null;
 };
+
+type SearchParams = Promise<{
+  success?: string;
+}>;
 
 function formatCurrency(value: number | null) {
   return new Intl.NumberFormat("no-NO", {
@@ -62,17 +67,21 @@ function isOfferExpired(validUntil: string | null) {
 
 export default async function PublicOfferPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  searchParams: SearchParams;
 }) {
   const { token } = await params;
+  const resolvedSearchParams = await searchParams;
+  const successMessage = String(resolvedSearchParams?.success || "").trim();
 
   const supabase = await createClient();
 
   const { data: offer, error } = await supabase
     .from("offers")
     .select(
-      "id, user_id, title, description, total, subtotal, vat_amount, vat_enabled, status, created_at, valid_until, approved_at"
+      "id, user_id, title, description, total, subtotal, vat_amount, vat_enabled, status, created_at, valid_until, approved_at, share_token"
     )
     .eq("share_token", token)
     .single();
@@ -101,27 +110,37 @@ export default async function PublicOfferPage({
 
     const { data: currentOffer, error } = await supabase
       .from("offers")
-      .select("id, status, valid_until")
+      .select("id, status, valid_until, share_token")
       .eq("id", typedOffer.id)
       .single();
 
     if (error || !currentOffer) {
-      return;
+      redirect(`/t/${token}`);
     }
 
     const expired = isOfferExpired(currentOffer.valid_until);
 
-    if (currentOffer.status === "approved" || expired) {
-      return;
+    if (currentOffer.status === "approved") {
+      redirect(`/t/${token}?success=already-approved`);
     }
 
-    await supabase
+    if (expired) {
+      redirect(`/t/${token}`);
+    }
+
+    const { error: updateError } = await supabase
       .from("offers")
       .update({
         status: "approved",
         approved_at: new Date().toISOString(),
       })
       .eq("id", typedOffer.id);
+
+    if (updateError) {
+      redirect(`/t/${token}`);
+    }
+
+    redirect(`/t/${token}?success=approved`);
   }
 
   return (
@@ -178,6 +197,18 @@ export default async function PublicOfferPage({
             </div>
           </div>
 
+          {successMessage === "approved" ? (
+            <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              Tilbudet er nå godkjent.
+            </div>
+          ) : null}
+
+          {successMessage === "already-approved" ? (
+            <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              Tilbudet var allerede godkjent.
+            </div>
+          ) : null}
+
           <div className="mt-8 rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
             <p className="text-sm text-neutral-500">Beskrivelse</p>
             <p className="mt-2 whitespace-pre-wrap leading-7">
@@ -211,7 +242,7 @@ export default async function PublicOfferPage({
           <div className="mt-8">
             {isApproved ? (
               <div className="rounded-2xl bg-green-100 p-5 text-green-800">
-                <p className="text-lg font-semibold">Tilbud er godkjent ✅</p>
+                <p className="text-lg font-semibold">Tilbudet er godkjent ✅</p>
                 <p className="mt-2 text-sm">
                   Takk. Tilbudet er registrert som godkjent.
                 </p>
@@ -234,7 +265,7 @@ export default async function PublicOfferPage({
                 <form action={approveOffer} className="mt-4">
                   <button
                     type="submit"
-                    className="w-full rounded-2xl bg-black px-4 py-4 text-lg font-medium text-white"
+                    className="w-full cursor-pointer rounded-2xl bg-black px-4 py-4 text-lg font-medium text-white"
                   >
                     Godkjenn tilbud
                   </button>
