@@ -148,7 +148,9 @@ export default async function SettingsPage() {
 
                 <div className="grid gap-5 md:grid-cols-2">
                   <div>
-                    <label className="block text-sm font-medium">Kontaktperson</label>
+                    <label className="block text-sm font-medium">
+                      Kontaktperson
+                    </label>
                     <input
                       name="contact_name"
                       defaultValue={settings?.contact_name || ""}
@@ -180,7 +182,9 @@ export default async function SettingsPage() {
 
                 <div className="grid gap-5 md:grid-cols-[180px_1fr]">
                   <div>
-                    <label className="block text-sm font-medium">Postnummer</label>
+                    <label className="block text-sm font-medium">
+                      Postnummer
+                    </label>
                     <input
                       name="company_postcode"
                       defaultValue={settings?.company_postcode || ""}
@@ -214,7 +218,9 @@ export default async function SettingsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium">Kontonummer</label>
+                    <label className="block text-sm font-medium">
+                      Kontonummer
+                    </label>
                     <input
                       name="bank_account"
                       defaultValue={settings?.bank_account || ""}
@@ -236,7 +242,9 @@ export default async function SettingsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium">BIC / SWIFT</label>
+                    <label className="block text-sm font-medium">
+                      BIC / SWIFT
+                    </label>
                     <input
                       name="bic"
                       defaultValue={settings?.bic || ""}
@@ -282,7 +290,9 @@ export default async function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium">Standard timepris</label>
+                  <label className="block text-sm font-medium">
+                    Standard timepris
+                  </label>
                   <input
                     name="hourly_rate_default"
                     type="number"
@@ -293,7 +303,9 @@ export default async function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium">Foretrukket prisform</label>
+                  <label className="block text-sm font-medium">
+                    Foretrukket prisform
+                  </label>
                   <select
                     name="pricing_preference"
                     defaultValue={settings?.pricing_preference || "auto"}
@@ -319,7 +331,9 @@ export default async function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium">Standard forbehold</label>
+                  <label className="block text-sm font-medium">
+                    Standard forbehold
+                  </label>
                   <textarea
                     name="default_terms"
                     defaultValue={settings?.default_terms || ""}
