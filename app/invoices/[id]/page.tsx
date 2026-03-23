@@ -888,6 +888,15 @@ export default async function InvoicePage({
                   </button>
                 </form>
 
+                <a
+                  href={`/api/invoices/${typedInvoice.id}/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full rounded-2xl bg-black px-4 py-3 text-center text-sm font-medium text-white"
+                >
+                  Åpne PDF
+                </a>
+
                 <form action={markInvoiceSent}>
                   <button
                     type="submit"

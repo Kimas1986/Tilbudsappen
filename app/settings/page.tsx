@@ -61,7 +61,9 @@ export default async function SettingsPage() {
     const iban = String(formData.get("iban") || "").trim();
     const bic = String(formData.get("bic") || "").trim();
 
-    const offerValidDaysRaw = String(formData.get("offer_valid_days") || "").trim();
+    const offerValidDaysRaw = String(
+      formData.get("offer_valid_days") || ""
+    ).trim();
 
     const hourlyRate = Number(hourlyRateRaw || 0);
     const offerValidDays = Number(offerValidDaysRaw || 14);
