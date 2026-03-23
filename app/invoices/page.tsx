@@ -41,6 +41,23 @@ function formatDate(value: string | null) {
   }
 }
 
+function isOverdue(invoice: InvoiceRow) {
+  if (invoice.status !== "sent") return false;
+  if (!invoice.due_date) return false;
+
+  const dueDate = new Date(invoice.due_date);
+  if (Number.isNaN(dueDate.getTime())) return false;
+
+  return dueDate.getTime() < Date.now();
+}
+
+function getDisplayStatus(invoice: InvoiceRow) {
+  if (invoice.status === "paid") return "paid";
+  if (invoice.status === "cancelled") return "cancelled";
+  if (isOverdue(invoice)) return "overdue";
+  return invoice.status;
+}
+
 function getInvoiceStatusLabel(status: string) {
   if (status === "draft") return "Utkast";
   if (status === "sent") return "Sendt";
@@ -67,13 +84,16 @@ function getCustomerName(customers: CustomerRelation) {
   return customers?.name || "Uten kunde";
 }
 
-function getStatusCount(invoices: InvoiceRow[], status: string) {
-  return invoices.filter((invoice) => invoice.status === status).length;
+function getStatusCount(invoices: Array<InvoiceRow & { displayStatus: string }>, status: string) {
+  return invoices.filter((invoice) => invoice.displayStatus === status).length;
 }
 
-function sumInvoiceValues(invoices: InvoiceRow[], statuses?: string[]) {
+function sumInvoiceValues(
+  invoices: Array<InvoiceRow & { displayStatus: string }>,
+  statuses?: string[]
+) {
   return invoices.reduce((sum, invoice) => {
-    if (statuses && !statuses.includes(invoice.status)) {
+    if (statuses && !statuses.includes(invoice.displayStatus)) {
       return sum;
     }
 
@@ -143,7 +163,10 @@ export default async function InvoicesPage() {
     console.error("Feil ved henting av fakturaer:", error);
   }
 
-  const typedInvoices = (invoices as InvoiceRow[] | null) || [];
+  const typedInvoices = ((invoices as InvoiceRow[] | null) || []).map((invoice) => ({
+    ...invoice,
+    displayStatus: getDisplayStatus(invoice),
+  }));
 
   const draftCount = getStatusCount(typedInvoices, "draft");
   const sentCount = getStatusCount(typedInvoices, "sent");
@@ -162,11 +185,12 @@ export default async function InvoicesPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-sm font-medium text-neutral-500">Tilbudsapp</p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">Fakturaer</h1>
+              <h1 className="mt-1 text-3xl font-bold tracking-tight">
+                Fakturaer
+              </h1>
               <p className="mt-4 text-sm text-neutral-600">
-                Her ser du alle fakturaene dine, hva som er sendt, hva som er
-                betalt, hva som er forfalt og hva som fortsatt ligger som utkast
-                for redigering.
+                Her ser du alle fakturaene dine, hva som er utkast, sendt, betalt
+                og hva som nå er forfalt.
               </p>
             </div>
 
@@ -222,16 +246,6 @@ export default async function InvoicesPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl bg-green-50 p-5 ring-1 ring-green-100">
-              <p className="text-sm text-green-800">Betalt</p>
-              <p className="mt-2 text-2xl font-bold text-green-900">
-                {paidCount}
-              </p>
-              <p className="mt-2 text-sm text-green-900/80">
-                {formatCurrency(paidValue)} kr
-              </p>
-            </div>
-
             <div className="rounded-2xl bg-orange-50 p-5 ring-1 ring-orange-100">
               <p className="text-sm text-orange-800">Forfalt</p>
               <p className="mt-2 text-2xl font-bold text-orange-900">
@@ -241,6 +255,16 @@ export default async function InvoicesPage() {
                 {formatCurrency(overdueValue)} kr
               </p>
             </div>
+
+            <div className="rounded-2xl bg-green-50 p-5 ring-1 ring-green-100">
+              <p className="text-sm text-green-800">Betalt</p>
+              <p className="mt-2 text-2xl font-bold text-green-900">
+                {paidCount}
+              </p>
+              <p className="mt-2 text-sm text-green-900/80">
+                {formatCurrency(paidValue)} kr
+              </p>
+            </div>
           </div>
 
           <div className="mt-10">
@@ -248,7 +272,7 @@ export default async function InvoicesPage() {
               <div>
                 <h2 className="text-lg font-semibold">Fakturaliste</h2>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Kundenavn øverst, med fakturatittel, status og beløp under.
+                  Kundenavn øverst, med fakturanummer, tittel, status og beløp under.
                 </p>
               </div>
             </div>
@@ -271,6 +295,13 @@ export default async function InvoicesPage() {
                         </p>
 
                         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+                          {invoice.invoice_number ? (
+                            <>
+                              <span>Nr. {invoice.invoice_number}</span>
+                              <span>•</span>
+                            </>
+                          ) : null}
+
                           <span>{formatCurrency(invoice.total)} kr</span>
                           <span>•</span>
                           <span>{formatDate(invoice.created_at)}</span>
@@ -279,13 +310,6 @@ export default async function InvoicesPage() {
                             <>
                               <span>•</span>
                               <span className="truncate">{invoice.title}</span>
-                            </>
-                          ) : null}
-
-                          {invoice.invoice_number ? (
-                            <>
-                              <span>•</span>
-                              <span>Nr. {invoice.invoice_number}</span>
                             </>
                           ) : null}
                         </div>
@@ -310,10 +334,10 @@ export default async function InvoicesPage() {
                       <div className="flex flex-col items-start gap-3 lg:items-end">
                         <span
                           className={`rounded-lg px-3 py-1 text-sm font-medium ${getInvoiceStatusClasses(
-                            invoice.status
+                            invoice.displayStatus
                           )}`}
                         >
-                          {getInvoiceStatusLabel(invoice.status)}
+                          {getInvoiceStatusLabel(invoice.displayStatus)}
                         </span>
 
                         <div className="flex gap-2">
