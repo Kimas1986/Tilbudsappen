@@ -42,6 +42,20 @@ type InvoiceRow = {
   customers?: CustomerRelation;
 };
 
+type SettingsRow = {
+  company_name: string | null;
+  company_email: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  company_address: string | null;
+  company_postcode: string | null;
+  company_city: string | null;
+  org_number: string | null;
+  bank_account: string | null;
+  iban: string | null;
+  bic: string | null;
+};
+
 type SearchParams = Promise<{
   error?: string;
   success?: string;
@@ -125,6 +139,32 @@ function toDateInputValue(value: string | null | undefined) {
   }
 }
 
+function formatOrgNumber(value: string | null | undefined) {
+  const raw = String(value || "").replace(/\s+/g, "");
+  if (raw.length !== 9) return String(value || "").trim();
+  return `${raw.slice(0, 3)} ${raw.slice(3, 6)} ${raw.slice(6, 9)}`;
+}
+
+function formatBankAccount(value: string | null | undefined) {
+  const raw = String(value || "").replace(/\s+/g, "");
+  if (raw.length !== 11) return String(value || "").trim();
+  return `${raw.slice(0, 4)}.${raw.slice(4, 6)}.${raw.slice(6, 11)}`;
+}
+
+function getCompanyLines(settings: SettingsRow | null) {
+  const lines: string[] = [];
+
+  if (settings?.company_name) lines.push(settings.company_name);
+  if (settings?.company_address) lines.push(settings.company_address);
+
+  const postcode = String(settings?.company_postcode || "").trim();
+  const city = String(settings?.company_city || "").trim();
+  const cityLine = [postcode, city].filter(Boolean).join(" ");
+  if (cityLine) lines.push(cityLine);
+
+  return lines;
+}
+
 async function recalculateInvoiceTotals(
   supabase: Awaited<ReturnType<typeof createClient>>,
   invoiceId: string,
@@ -143,7 +183,8 @@ async function recalculateInvoiceTotals(
 
   const oldSubtotal = toNumber(invoiceForVat.subtotal);
   const oldVatAmount = toNumber(invoiceForVat.vat_amount);
-  const vatRate = oldSubtotal > 0 && oldVatAmount > 0 ? oldVatAmount / oldSubtotal : 0;
+  const vatRate =
+    oldSubtotal !== 0 && oldVatAmount !== 0 ? oldVatAmount / oldSubtotal : 0;
 
   const { data: lines, error: linesError } = await supabase
     .from("invoice_lines")
@@ -223,7 +264,9 @@ export default async function InvoicePage({
     const dueDateRaw = String(formData.get("due_date") || "").trim();
 
     if (!title) {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Fakturatittel må fylles ut")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Fakturatittel må fylles ut")}`
+      );
     }
 
     const updatePayload: {
@@ -233,7 +276,9 @@ export default async function InvoicePage({
     } = {
       title,
       description: description || null,
-      due_date: dueDateRaw ? new Date(`${dueDateRaw}T12:00:00`).toISOString() : null,
+      due_date: dueDateRaw
+        ? new Date(`${dueDateRaw}T12:00:00`).toISOString()
+        : null,
     };
 
     const { error } = await supabase
@@ -243,10 +288,14 @@ export default async function InvoicePage({
       .eq("user_id", user.id);
 
     if (error) {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke oppdatere fakturahodet")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Kunne ikke oppdatere fakturahodet")}`
+      );
     }
 
-    redirect(`/invoices/${id}?success=${encodeURIComponent("Fakturahodet ble oppdatert")}`);
+    redirect(
+      `/invoices/${id}?success=${encodeURIComponent("Fakturahodet ble oppdatert")}`
+    );
   }
 
   async function updateInvoiceLine(formData: FormData) {
@@ -274,7 +323,9 @@ export default async function InvoicePage({
     }
 
     if (!title) {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Linjetittel må fylles ut")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Linjetittel må fylles ut")}`
+      );
     }
 
     const { error } = await supabase
@@ -292,16 +343,22 @@ export default async function InvoicePage({
       .eq("user_id", user.id);
 
     if (error) {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke oppdatere fakturalinjen")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Kunne ikke oppdatere fakturalinjen")}`
+      );
     }
 
     try {
       await recalculateInvoiceTotals(supabase, id, user.id);
     } catch {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Linjen ble lagret, men summer kunne ikke oppdateres")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Linjen ble lagret, men summer kunne ikke oppdateres")}`
+      );
     }
 
-    redirect(`/invoices/${id}?success=${encodeURIComponent("Fakturalinje oppdatert")}`);
+    redirect(
+      `/invoices/${id}?success=${encodeURIComponent("Fakturalinje oppdatert")}`
+    );
   }
 
   async function addInvoiceLine(formData: FormData) {
@@ -323,10 +380,12 @@ export default async function InvoicePage({
     const unitPrice = toNumber(formData.get("unit_price"));
 
     if (!title) {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Ny linje må ha en tittel")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Ny linje må ha en tittel")}`
+      );
     }
 
-    const safeQuantity = quantity > 0 ? quantity : 1;
+    const safeQuantity = Number.isFinite(quantity) ? quantity : 0;
 
     const { error } = await supabase.from("invoice_lines").insert({
       invoice_id: id,
@@ -341,16 +400,22 @@ export default async function InvoicePage({
     });
 
     if (error) {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke legge til fakturalinje")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Kunne ikke legge til fakturalinje")}`
+      );
     }
 
     try {
       await recalculateInvoiceTotals(supabase, id, user.id);
     } catch {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Linjen ble lagt til, men summer kunne ikke oppdateres")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Linjen ble lagt til, men summer kunne ikke oppdateres")}`
+      );
     }
 
-    redirect(`/invoices/${id}?success=${encodeURIComponent("Ny fakturalinje lagt til")}`);
+    redirect(
+      `/invoices/${id}?success=${encodeURIComponent("Ny fakturalinje lagt til")}`
+    );
   }
 
   async function deleteInvoiceLine(formData: FormData) {
@@ -379,16 +444,22 @@ export default async function InvoicePage({
       .eq("user_id", user.id);
 
     if (error) {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke slette fakturalinje")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Kunne ikke slette fakturalinje")}`
+      );
     }
 
     try {
       await recalculateInvoiceTotals(supabase, id, user.id);
     } catch {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Linjen ble slettet, men summer kunne ikke oppdateres")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Linjen ble slettet, men summer kunne ikke oppdateres")}`
+      );
     }
 
-    redirect(`/invoices/${id}?success=${encodeURIComponent("Fakturalinje slettet")}`);
+    redirect(
+      `/invoices/${id}?success=${encodeURIComponent("Fakturalinje slettet")}`
+    );
   }
 
   async function markInvoiceSent() {
@@ -413,10 +484,14 @@ export default async function InvoicePage({
       .eq("user_id", user.id);
 
     if (error) {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke markere faktura som sendt")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Kunne ikke markere faktura som sendt")}`
+      );
     }
 
-    redirect(`/invoices/${id}?success=${encodeURIComponent("Faktura markert som sendt")}`);
+    redirect(
+      `/invoices/${id}?success=${encodeURIComponent("Faktura markert som sendt")}`
+    );
   }
 
   async function markInvoicePaid() {
@@ -441,10 +516,14 @@ export default async function InvoicePage({
       .eq("user_id", user.id);
 
     if (error) {
-      redirect(`/invoices/${id}?error=${encodeURIComponent("Kunne ikke markere faktura som betalt")}`);
+      redirect(
+        `/invoices/${id}?error=${encodeURIComponent("Kunne ikke markere faktura som betalt")}`
+      );
     }
 
-    redirect(`/invoices/${id}?success=${encodeURIComponent("Faktura markert som betalt")}`);
+    redirect(
+      `/invoices/${id}?success=${encodeURIComponent("Faktura markert som betalt")}`
+    );
   }
 
   async function sendInvoiceEmail() {
@@ -485,58 +564,78 @@ export default async function InvoicePage({
       redirect(`/invoices/${id}?error=${encodeURIComponent(error)}`);
     }
 
-    redirect(`/invoices/${id}?success=${encodeURIComponent("Faktura sendt på e-post")}`);
+    redirect(
+      `/invoices/${id}?success=${encodeURIComponent("Faktura sendt på e-post")}`
+    );
   }
 
-  const { data: invoice, error: invoiceError } = await supabase
-    .from("invoices")
-    .select(
+  const [
+    { data: invoice, error: invoiceError },
+    { data: invoiceLines, error: linesError },
+    { data: settings, error: settingsError },
+  ] = await Promise.all([
+    supabase
+      .from("invoices")
+      .select(
+        `
+        id,
+        invoice_number,
+        title,
+        description,
+        status,
+        subtotal,
+        vat_amount,
+        total,
+        due_date,
+        sent_at,
+        paid_at,
+        created_at,
+        offer_id,
+        customers(name, email, phone)
       `
-      id,
-      invoice_number,
-      title,
-      description,
-      status,
-      subtotal,
-      vat_amount,
-      total,
-      due_date,
-      sent_at,
-      paid_at,
-      created_at,
-      offer_id,
-      customers(name, email, phone)
-    `
-    )
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .single();
+      )
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .single(),
+    supabase
+      .from("invoice_lines")
+      .select("id, title, description, quantity, unit, unit_price, line_total")
+      .eq("invoice_id", id)
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("ai_settings")
+      .select(
+        "company_name, company_email, contact_name, contact_phone, company_address, company_postcode, company_city, org_number, bank_account, iban, bic"
+      )
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
 
   if (invoiceError || !invoice) {
     notFound();
   }
 
-  const { data: invoiceLines, error: linesError } = await supabase
-    .from("invoice_lines")
-    .select("id, title, description, quantity, unit, unit_price, line_total")
-    .eq("invoice_id", id)
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: true });
-
   if (linesError) {
     console.error("Feil ved henting av fakturalinjer:", linesError);
   }
 
+  if (settingsError) {
+    console.error("Feil ved henting av firmainnstillinger:", settingsError);
+  }
+
   const typedInvoice = invoice as InvoiceRow;
   const typedLines = (invoiceLines as InvoiceLine[] | null) || [];
+  const typedSettings = (settings as SettingsRow | null) || null;
   const customer = getCustomerInfo(typedInvoice.customers || null);
   const hasCustomerEmail = Boolean(String(customer.email || "").trim());
+  const companyLines = getCompanyLines(typedSettings);
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <div className="mx-auto max-w-6xl px-6 py-12">
+      <div className="mx-auto max-w-7xl px-6 py-12">
         <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-4 border-b border-neutral-200 pb-8 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-sm font-medium text-neutral-500">Faktura</p>
               <h1 className="mt-1 text-3xl font-bold tracking-tight">
@@ -580,6 +679,15 @@ export default async function InvoicePage({
                     Tilbake til tilbud
                   </a>
                 ) : null}
+
+                <a
+                  href={`/api/invoices/${typedInvoice.id}/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
+                >
+                  Åpne PDF
+                </a>
               </div>
             </div>
           </div>
@@ -595,6 +703,83 @@ export default async function InvoicePage({
               {successMessage}
             </div>
           ) : null}
+
+          <section className="mt-8 rounded-3xl border border-neutral-200 bg-neutral-50 p-6">
+            <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  Fra
+                </p>
+
+                <div className="mt-3 space-y-1 text-sm text-neutral-700">
+                  <p className="text-lg font-semibold text-neutral-900">
+                    {typedSettings?.company_name || "Firmanavn mangler"}
+                  </p>
+
+                  {companyLines.map((line) => (
+                    <p key={line}>{line}</p>
+                  ))}
+
+                  {typedSettings?.company_email ? (
+                    <p>E-post: {typedSettings.company_email}</p>
+                  ) : null}
+
+                  {typedSettings?.contact_name ? (
+                    <p>Kontakt: {typedSettings.contact_name}</p>
+                  ) : null}
+
+                  {typedSettings?.contact_phone ? (
+                    <p>Telefon: {typedSettings.contact_phone}</p>
+                  ) : null}
+
+                  {typedSettings?.org_number ? (
+                    <p>Org.nr: {formatOrgNumber(typedSettings.org_number)}</p>
+                  ) : null}
+
+                  {typedSettings?.bank_account ? (
+                    <p>Konto: {formatBankAccount(typedSettings.bank_account)}</p>
+                  ) : null}
+
+                  {typedSettings?.iban ? <p>IBAN: {typedSettings.iban}</p> : null}
+                  {typedSettings?.bic ? <p>BIC: {typedSettings.bic}</p> : null}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                  Til
+                </p>
+
+                <div className="mt-3 space-y-1 text-sm text-neutral-700">
+                  <p className="text-lg font-semibold text-neutral-900">
+                    {customer.name}
+                  </p>
+                  <p>E-post: {customer.email || "-"}</p>
+                  <p>Telefon: {customer.phone || "-"}</p>
+                </div>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl bg-neutral-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Fakturanummer
+                    </p>
+                    <p className="mt-2 font-semibold text-neutral-900">
+                      {typedInvoice.invoice_number || "-"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-neutral-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Forfall
+                    </p>
+                    <p className="mt-2 font-semibold text-neutral-900">
+                      {formatDate(typedInvoice.due_date)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
 
           <div className="mt-8 grid gap-4 lg:grid-cols-4">
             <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
@@ -624,11 +809,12 @@ export default async function InvoicePage({
             </div>
           </div>
 
-          <div className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
             <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
               <h2 className="text-lg font-semibold">Fakturahode</h2>
               <p className="mt-2 text-sm text-neutral-600">
-                Her kan du justere tittelen, beskrivelsen og forfallsdatoen før sending.
+                Her kan du justere tittelen, beskrivelsen og forfallsdatoen før
+                sending.
               </p>
 
               <form action={updateInvoiceHeader} className="mt-4 space-y-4">
@@ -677,14 +863,12 @@ export default async function InvoicePage({
                 </button>
               </form>
 
-              <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-black/5">
-                <p className="text-sm text-neutral-500">Kundeinfo</p>
-                <p className="mt-2 font-medium">{customer.name}</p>
-                <div className="mt-2 flex flex-wrap gap-4 text-sm text-neutral-500">
-                  <span>E-post: {customer.email || "-"}</span>
-                  <span>Telefon: {customer.phone || "-"}</span>
+              {!typedSettings?.org_number || !typedSettings?.bank_account ? (
+                <div className="mt-5 rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-900">
+                  Organisasjonsnummer eller kontonummer mangler i innstillinger.
+                  Fyll dette inn før du sender faktura til kunde.
                 </div>
-              </div>
+              ) : null}
             </section>
 
             <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
@@ -739,8 +923,8 @@ export default async function InvoicePage({
               <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4">
                 <p className="text-sm font-medium text-blue-900">Praktisk flyt</p>
                 <p className="mt-1 text-sm text-blue-800">
-                  Juster linjer og tekst her hvis det har kommet tilleggsarbeid,
-                  ekstra materialer eller andre endringer etter at tilbudet ble godkjent.
+                  Du kan bruke negative tall på antall eller pris for fratrekk,
+                  prisavslag eller kreditering av deler av jobben.
                 </p>
               </div>
 
@@ -760,7 +944,8 @@ export default async function InvoicePage({
               <div>
                 <p className="text-lg font-semibold">Fakturalinjer</p>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Her kan du redigere eksisterende linjer, slette dem eller legge til nye.
+                  Her kan du redigere eksisterende linjer, slette dem eller legge
+                  til nye.
                 </p>
               </div>
 
@@ -817,7 +1002,6 @@ export default async function InvoicePage({
                           <input
                             type="number"
                             step="0.01"
-                            min="0"
                             name="quantity"
                             defaultValue={line.quantity ?? 1}
                             className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
@@ -843,7 +1027,6 @@ export default async function InvoicePage({
                           <input
                             type="number"
                             step="0.01"
-                            min="0"
                             name="unit_price"
                             defaultValue={line.unit_price ?? 0}
                             className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
@@ -925,7 +1108,6 @@ export default async function InvoicePage({
                   <input
                     type="number"
                     step="0.01"
-                    min="0"
                     name="quantity"
                     defaultValue={1}
                     className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
@@ -950,7 +1132,6 @@ export default async function InvoicePage({
                   <input
                     type="number"
                     step="0.01"
-                    min="0"
                     name="unit_price"
                     defaultValue={0}
                     className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
