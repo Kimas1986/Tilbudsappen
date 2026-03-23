@@ -28,6 +28,20 @@ type InvoiceLine = {
   line_total: number | null;
 };
 
+type SettingsRow = {
+  company_name: string | null;
+  company_email: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  company_address: string | null;
+  company_postcode: string | null;
+  company_city: string | null;
+  org_number: string | null;
+  bank_account: string | null;
+  iban: string | null;
+  bic: string | null;
+};
+
 function formatCurrency(value: number | null | undefined) {
   return new Intl.NumberFormat("no-NO", {
     maximumFractionDigits: 0,
@@ -69,6 +83,24 @@ function escapeHtml(value: string) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function formatOrgNumber(value: string | null | undefined) {
+  const raw = String(value || "").replace(/\s+/g, "");
+  if (raw.length !== 9) return String(value || "").trim();
+  return `${raw.slice(0, 3)} ${raw.slice(3, 6)} ${raw.slice(6, 9)}`;
+}
+
+function formatBankAccount(value: string | null | undefined) {
+  const raw = String(value || "").replace(/\s+/g, "");
+  if (raw.length !== 11) return String(value || "").trim();
+  return `${raw.slice(0, 4)}.${raw.slice(4, 6)}.${raw.slice(6, 11)}`;
+}
+
+function getCompanyAddressLine(settings: SettingsRow | null | undefined) {
+  const postcode = String(settings?.company_postcode || "").trim();
+  const city = String(settings?.company_city || "").trim();
+  return [postcode, city].filter(Boolean).join(" ");
 }
 
 function buildLinesHtml(lines: InvoiceLine[]) {
@@ -181,13 +213,17 @@ export async function POST(
 
     const { data: settings, error: settingsError } = await supabase
       .from("ai_settings")
-      .select("company_name, contact_name, contact_phone")
+      .select(
+        "company_name, company_email, contact_name, contact_phone, company_address, company_postcode, company_city, org_number, bank_account, iban, bic"
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 
     if (settingsError) {
       console.error("Feil ved henting av settings:", settingsError);
     }
+
+    const typedSettings = (settings as SettingsRow | null) || null;
 
     const customer = getCustomerInfo(invoice.customers as CustomerRelation);
     const customerEmail = String(customer.email || "").trim();
@@ -210,9 +246,16 @@ export async function POST(
 
     const resend = new Resend(resendApiKey);
 
-    const companyName = String(settings?.company_name || "").trim() || "Tilbudsapp";
-    const contactName = String(settings?.contact_name || "").trim();
-    const contactPhone = String(settings?.contact_phone || "").trim();
+    const companyName = String(typedSettings?.company_name || "").trim() || "Tilbudsapp";
+    const companyEmail = String(typedSettings?.company_email || "").trim();
+    const contactName = String(typedSettings?.contact_name || "").trim();
+    const contactPhone = String(typedSettings?.contact_phone || "").trim();
+    const companyAddress = String(typedSettings?.company_address || "").trim();
+    const companyAddressLine = getCompanyAddressLine(typedSettings);
+    const orgNumber = String(typedSettings?.org_number || "").trim();
+    const bankAccount = String(typedSettings?.bank_account || "").trim();
+    const iban = String(typedSettings?.iban || "").trim();
+    const bic = String(typedSettings?.bic || "").trim();
 
     const invoiceTitle = String(invoice.title || "").trim() || "Faktura";
     const invoiceDescription = String(invoice.description || "").trim();
@@ -225,19 +268,98 @@ export async function POST(
 
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;color:#171717;line-height:1.6;">
-        <h2 style="margin:0 0 8px 0;">${escapeHtml(companyName)}</h2>
-        ${
-          contactName
-            ? `<p style="margin:0;color:#525252;">${escapeHtml(contactName)}</p>`
-            : ""
-        }
-        ${
-          contactPhone
-            ? `<p style="margin:0;color:#525252;">${escapeHtml(contactPhone)}</p>`
-            : ""
-        }
+        <table style="width:100%;border-collapse:collapse;margin-bottom:24px;">
+          <tr>
+            <td style="width:54%;vertical-align:top;padding-right:16px;">
+              <h2 style="margin:0 0 8px 0;">${escapeHtml(companyName)}</h2>
+              ${
+                companyAddress
+                  ? `<p style="margin:0;color:#525252;">${escapeHtml(companyAddress)}</p>`
+                  : ""
+              }
+              ${
+                companyAddressLine
+                  ? `<p style="margin:0;color:#525252;">${escapeHtml(companyAddressLine)}</p>`
+                  : ""
+              }
+              ${
+                companyEmail
+                  ? `<p style="margin:0;color:#525252;">${escapeHtml(companyEmail)}</p>`
+                  : ""
+              }
+              ${
+                contactName
+                  ? `<p style="margin:0;color:#525252;">Kontakt: ${escapeHtml(contactName)}</p>`
+                  : ""
+              }
+              ${
+                contactPhone
+                  ? `<p style="margin:0;color:#525252;">Telefon: ${escapeHtml(contactPhone)}</p>`
+                  : ""
+              }
+              ${
+                orgNumber
+                  ? `<p style="margin:0;color:#525252;">Org.nr: ${escapeHtml(
+                      formatOrgNumber(orgNumber)
+                    )}</p>`
+                  : ""
+              }
+              ${
+                bankAccount
+                  ? `<p style="margin:0;color:#525252;">Konto: ${escapeHtml(
+                      formatBankAccount(bankAccount)
+                    )}</p>`
+                  : ""
+              }
+              ${
+                iban
+                  ? `<p style="margin:0;color:#525252;">IBAN: ${escapeHtml(iban)}</p>`
+                  : ""
+              }
+              ${
+                bic
+                  ? `<p style="margin:0;color:#525252;">BIC: ${escapeHtml(bic)}</p>`
+                  : ""
+              }
+            </td>
 
-        <div style="height:24px;"></div>
+            <td style="width:46%;vertical-align:top;">
+              <div style="border:1px solid #e5e5e5;border-radius:16px;padding:16px;background:#fafafa;">
+                <p style="margin:0 0 6px 0;font-size:12px;color:#737373;text-transform:uppercase;">Faktura</p>
+                ${
+                  invoiceNumber
+                    ? `<p style="margin:0 0 6px 0;color:#525252;">Fakturanummer: ${escapeHtml(
+                        invoiceNumber
+                      )}</p>`
+                    : ""
+                }
+                <p style="margin:0 0 6px 0;color:#525252;">Dato: ${formatDate(
+                  invoice.created_at
+                )}</p>
+                <p style="margin:0;color:#525252;">Forfallsdato: ${formatDate(
+                  invoice.due_date
+                )}</p>
+              </div>
+            </td>
+          </tr>
+        </table>
+
+        <div style="border:1px solid #e5e5e5;border-radius:16px;padding:16px;margin-bottom:24px;">
+          <p style="margin:0 0 6px 0;font-size:12px;color:#737373;text-transform:uppercase;">Kunde</p>
+          <p style="margin:0 0 4px 0;font-size:18px;font-weight:700;">${escapeHtml(
+            customer.name
+          )}</p>
+          ${
+            customer.email
+              ? `<p style="margin:0;color:#525252;">E-post: ${escapeHtml(customer.email)}</p>`
+              : ""
+          }
+          ${
+            customer.phone
+              ? `<p style="margin:0;color:#525252;">Telefon: ${escapeHtml(customer.phone)}</p>`
+              : ""
+          }
+        </div>
 
         <p>Hei ${escapeHtml(customer.name)},</p>
 
@@ -249,13 +371,6 @@ export async function POST(
             invoiceDescription
               ? `<p style="margin:0 0 8px 0;color:#525252;">${escapeHtml(
                   invoiceDescription
-                )}</p>`
-              : ""
-          }
-          ${
-            invoiceNumber
-              ? `<p style="margin:0;color:#525252;">Fakturanummer: ${escapeHtml(
-                  invoiceNumber
                 )}</p>`
               : ""
           }
@@ -302,13 +417,50 @@ export async function POST(
 
         <div style="height:24px;"></div>
 
+        ${
+          bankAccount || orgNumber || iban || bic
+            ? `
+          <div style="border:1px solid #e5e5e5;border-radius:16px;padding:16px;background:#fafafa;">
+            <p style="margin:0 0 8px 0;font-size:12px;color:#737373;text-transform:uppercase;">Betalingsinformasjon</p>
+            ${
+              bankAccount
+                ? `<p style="margin:0;color:#525252;">Kontonummer: ${escapeHtml(
+                    formatBankAccount(bankAccount)
+                  )}</p>`
+                : ""
+            }
+            ${
+              orgNumber
+                ? `<p style="margin:0;color:#525252;">Organisasjonsnummer: ${escapeHtml(
+                    formatOrgNumber(orgNumber)
+                  )}</p>`
+                : ""
+            }
+            ${
+              iban
+                ? `<p style="margin:0;color:#525252;">IBAN: ${escapeHtml(iban)}</p>`
+                : ""
+            }
+            ${
+              bic
+                ? `<p style="margin:0;color:#525252;">BIC: ${escapeHtml(bic)}</p>`
+                : ""
+            }
+          </div>
+        `
+            : ""
+        }
+
+        <div style="height:24px;"></div>
+
         <p>Ta kontakt dersom du har spørsmål til fakturaen.</p>
 
         <p style="margin-top:24px;">
           Med vennlig hilsen<br/>
           ${escapeHtml(companyName)}<br/>
           ${contactName ? `${escapeHtml(contactName)}<br/>` : ""}
-          ${contactPhone ? `${escapeHtml(contactPhone)}` : ""}
+          ${contactPhone ? `${escapeHtml(contactPhone)}<br/>` : ""}
+          ${companyEmail ? `${escapeHtml(companyEmail)}` : ""}
         </p>
       </div>
     `;
