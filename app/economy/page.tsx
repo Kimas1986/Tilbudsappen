@@ -10,6 +10,7 @@ type OfferRow = {
 
 type InvoiceRow = {
   id: string;
+  invoice_number: string | null;
   status: string;
   total: number | null;
   created_at: string | null;
@@ -28,6 +29,7 @@ type InvoiceCustomerRelation =
 
 type RecentInvoiceRow = {
   id: string;
+  invoice_number: string | null;
   title: string | null;
   status: string;
   total: number | null;
@@ -62,6 +64,23 @@ function getDisplayStatus(offer: OfferRow) {
   if (offer.status === "approved") return "approved";
   if (isExpired(offer.valid_until)) return "expired";
   return offer.status;
+}
+
+function isInvoiceOverdue(invoice: InvoiceRow | RecentInvoiceRow) {
+  if (invoice.status !== "sent") return false;
+  if (!invoice.due_date) return false;
+
+  const dueDate = new Date(invoice.due_date);
+  if (Number.isNaN(dueDate.getTime())) return false;
+
+  return dueDate.getTime() < Date.now();
+}
+
+function getInvoiceDisplayStatus(invoice: InvoiceRow | RecentInvoiceRow) {
+  if (invoice.status === "paid") return "paid";
+  if (invoice.status === "cancelled") return "cancelled";
+  if (isInvoiceOverdue(invoice)) return "overdue";
+  return invoice.status;
 }
 
 function formatCurrency(value: number) {
@@ -113,7 +132,7 @@ function sumOfferValues(offers: OfferRow[]) {
   return offers.reduce((sum, offer) => sum + toNumber(offer.total), 0);
 }
 
-function sumInvoiceValues(invoices: InvoiceRow[]) {
+function sumInvoiceValues(invoices: Array<InvoiceRow & { displayStatus: string }>) {
   return invoices.reduce((sum, invoice) => sum + toNumber(invoice.total), 0);
 }
 
@@ -227,7 +246,7 @@ export default async function EconomyPage() {
       .eq("user_id", user.id),
     supabase
       .from("invoices")
-      .select("id, status, total, created_at, due_date, paid_at")
+      .select("id, invoice_number, status, total, created_at, due_date, paid_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: false }),
     supabase
@@ -235,6 +254,7 @@ export default async function EconomyPage() {
       .select(
         `
         id,
+        invoice_number,
         title,
         status,
         total,
@@ -267,8 +287,16 @@ export default async function EconomyPage() {
 
   const typedOffers = (offers as OfferRow[] | null) || [];
   const typedOfferMaterials = (offerMaterials as OfferMaterialRow[] | null) || [];
-  const typedInvoices = (invoices as InvoiceRow[] | null) || [];
-  const typedRecentInvoices = (recentInvoices as RecentInvoiceRow[] | null) || [];
+  const typedInvoices = ((invoices as InvoiceRow[] | null) || []).map((invoice) => ({
+    ...invoice,
+    displayStatus: getInvoiceDisplayStatus(invoice),
+  }));
+  const typedRecentInvoices = ((recentInvoices as RecentInvoiceRow[] | null) || []).map(
+    (invoice) => ({
+      ...invoice,
+      displayStatus: getInvoiceDisplayStatus(invoice),
+    })
+  );
 
   const offersWithDisplayStatus = typedOffers.map((offer) => ({
     ...offer,
@@ -323,11 +351,11 @@ export default async function EconomyPage() {
 
   const hasApprovedMaterialData = approvedOfferMaterials.length > 0;
 
-  const paidInvoices = typedInvoices.filter((invoice) => invoice.status === "paid");
-  const sentInvoices = typedInvoices.filter((invoice) => invoice.status === "sent");
-  const draftInvoices = typedInvoices.filter((invoice) => invoice.status === "draft");
+  const paidInvoices = typedInvoices.filter((invoice) => invoice.displayStatus === "paid");
+  const sentInvoices = typedInvoices.filter((invoice) => invoice.displayStatus === "sent");
+  const draftInvoices = typedInvoices.filter((invoice) => invoice.displayStatus === "draft");
   const overdueInvoices = typedInvoices.filter(
-    (invoice) => invoice.status === "overdue"
+    (invoice) => invoice.displayStatus === "overdue"
   );
 
   const totalInvoicedValue = sumInvoiceValues(paidInvoices);
@@ -555,6 +583,9 @@ export default async function EconomyPage() {
                             {invoice.title || "Faktura"}
                           </p>
                           <p className="mt-1 text-xs text-neutral-500">
+                            {invoice.invoice_number
+                              ? `Nr. ${invoice.invoice_number} • `
+                              : ""}
                             Opprettet {formatDate(invoice.created_at)} • Forfall{" "}
                             {formatDate(invoice.due_date)}
                           </p>
@@ -563,10 +594,10 @@ export default async function EconomyPage() {
                         <div className="flex flex-col items-start gap-2 sm:items-end">
                           <span
                             className={`rounded-lg px-3 py-1 text-xs font-medium ${getInvoiceStatusClasses(
-                              invoice.status
+                              invoice.displayStatus
                             )}`}
                           >
-                            {getInvoiceStatusLabel(invoice.status)}
+                            {getInvoiceStatusLabel(invoice.displayStatus)}
                           </span>
 
                           <p className="font-bold">
