@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -320,7 +321,6 @@ export default async function InvoicePage({
     const quantity = toNumber(formData.get("quantity"));
     const unit = String(formData.get("unit") || "").trim();
     const unitPrice = toNumber(formData.get("unit_price"));
-    const lineTotal = round2(quantity * unitPrice);
 
     if (!title) {
       redirect(`/invoices/${id}?error=${encodeURIComponent("Ny linje må ha en tittel")}`);
@@ -459,10 +459,19 @@ export default async function InvoicePage({
       redirect("/login");
     }
 
+    const cookieStore = await cookies();
+    const cookieHeader = cookieStore
+      .getAll()
+      .map((cookie) => `${cookie.name}=${cookie.value}`)
+      .join("; ");
+
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
     const response = await fetch(`${baseUrl}/api/invoices/${id}/send`, {
       method: "POST",
+      headers: {
+        Cookie: cookieHeader,
+      },
       cache: "no-store",
     });
 
