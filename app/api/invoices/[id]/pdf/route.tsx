@@ -448,7 +448,7 @@ function InvoicePdfDocument({
               <Text style={styles.metaValue}>{formatDate(invoice.created_at)}</Text>
             </View>
 
-            <View style={[styles.metaRow, { borderBottomWidth: 0 }]}>
+            <View style={[styles.metaRow, styles.rowLast]}>
               <Text style={styles.metaLabel}>Forfall</Text>
               <Text style={styles.metaValue}>{formatDate(invoice.due_date)}</Text>
             </View>
@@ -471,7 +471,12 @@ function InvoicePdfDocument({
             {invoice.title ? (
               <>
                 <Text style={styles.sectionLabel}>Tittel</Text>
-                <Text style={[styles.descriptionText, { fontSize: 12, marginBottom: 8 }]}>
+                <Text
+                  style={[
+                    styles.descriptionText,
+                    { fontSize: 12, marginBottom: 8 },
+                  ]}
+                >
                   {invoice.title}
                 </Text>
               </>
@@ -509,8 +514,12 @@ function InvoicePdfDocument({
           ) : (
             lines.map((line, index) => {
               const isLast = index === lines.length - 1;
+              const rowStyle = isLast
+                ? [styles.row, styles.rowLast]
+                : [styles.row];
+
               return (
-                <View key={line.id} style={[styles.row, isLast ? styles.rowLast : null]}>
+                <View key={line.id} style={rowStyle}>
                   <View style={[styles.cell, styles.cellDescription]}>
                     <Text style={styles.lineTitle}>{line.title || "Linje"}</Text>
                     {line.description ? (
