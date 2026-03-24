@@ -96,6 +96,12 @@ function getTemplateMaterial(
   return item.materials || null;
 }
 
+function parseNumber(value: string) {
+  const normalized = value.replace(",", ".").trim();
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 type SearchParams = Promise<{
   error?: string;
 }>;
@@ -161,6 +167,146 @@ export default async function MaterialsPage({
     if (error) {
       console.error("Feil ved opprettelse av materiale:", error);
       redirect("/materials?error=Kunne+ikke+lagre+materiale");
+    }
+
+    redirect("/materials");
+  }
+
+  async function bulkImportMaterials(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const raw = String(formData.get("bulk_materials") || "").trim();
+    const supplierFallback = String(formData.get("bulk_supplier") || "").trim();
+    const unitFallback = String(formData.get("bulk_unit") || "stk").trim() || "stk";
+    const pricingMode = String(formData.get("bulk_pricing_mode") || "markup").trim();
+    const wastePercent = parseNumber(String(formData.get("bulk_waste_percent") || "10"));
+    const markupPercent = parseNumber(String(formData.get("bulk_markup_percent") || "15"));
+
+    if (!raw) {
+      redirect("/materials?error=Mangler+linjer+for+bulkimport");
+    }
+
+    const rows = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const parts = line.split("|").map((part) => part.trim());
+
+        if (parts.length < 4) {
+          return null;
+        }
+
+        const name = parts[0] || "";
+        const supplier = parts[1] || supplierFallback || null;
+        const unit = parts[2] || unitFallback;
+        const basePrice = parseNumber(parts[3] || "0");
+
+        if (!name || basePrice <= 0) {
+          return null;
+        }
+
+        return {
+          user_id: user.id,
+          supplier,
+          sku: null,
+          name,
+          unit,
+          base_price: basePrice,
+          waste_percent: wastePercent,
+          markup_percent: markupPercent,
+          pricing_mode: pricingMode || "markup",
+          last_updated_at: new Date().toISOString(),
+        };
+      })
+      .filter(Boolean) as {
+      user_id: string;
+      supplier: string | null;
+      sku: null;
+      name: string;
+      unit: string;
+      base_price: number;
+      waste_percent: number;
+      markup_percent: number;
+      pricing_mode: string;
+      last_updated_at: string;
+    }[];
+
+    if (rows.length === 0) {
+      redirect("/materials?error=Fant+ingen+gyldige+linjer+for+bulkimport");
+    }
+
+    const { error } = await supabase.from("materials").insert(rows);
+
+    if (error) {
+      console.error("Feil ved bulkimport av materialer:", error);
+      redirect("/materials?error=Kunne+ikke+importere+materialer");
+    }
+
+    redirect("/materials");
+  }
+
+  async function updateMaterial(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      redirect("/login");
+    }
+
+    const materialId = String(formData.get("materialId") || "").trim();
+    const supplier = String(formData.get("supplier") || "").trim();
+    const sku = String(formData.get("sku") || "").trim();
+    const name = String(formData.get("name") || "").trim();
+    const unit = String(formData.get("unit") || "stk").trim();
+    const pricingMode = String(formData.get("pricing_mode") || "markup").trim();
+
+    const basePrice = Number(formData.get("base_price") || 0);
+    const wastePercent = Number(formData.get("waste_percent") || 0);
+    const markupPercent = Number(formData.get("markup_percent") || 0);
+
+    if (!materialId) {
+      redirect("/materials?error=Mangler+materiale+som+skal+oppdateres");
+    }
+
+    if (!name) {
+      redirect("/materials?error=Materiale+m%C3%A5+ha+et+navn");
+    }
+
+    const { error } = await supabase
+      .from("materials")
+      .update({
+        supplier: supplier || null,
+        sku: sku || null,
+        name,
+        unit,
+        base_price: Number.isFinite(basePrice) ? basePrice : 0,
+        waste_percent: Number.isFinite(wastePercent) ? wastePercent : 0,
+        markup_percent: Number.isFinite(markupPercent) ? markupPercent : 0,
+        pricing_mode: pricingMode || "markup",
+        last_updated_at: new Date().toISOString(),
+      })
+      .eq("id", materialId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Feil ved oppdatering av materiale:", error);
+      redirect("/materials?error=Kunne+ikke+oppdatere+materiale");
     }
 
     redirect("/materials");
@@ -456,7 +602,11 @@ export default async function MaterialsPage({
     { data: templates, error: templatesError },
     { data: templateItems, error: templateItemsError },
   ] = await Promise.all([
-    supabase.from("materials").select("*").order("created_at", { ascending: false }),
+    supabase
+      .from("materials")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
     supabase
       .from("material_templates")
       .select("id, name, description, created_at")
@@ -503,10 +653,10 @@ export default async function MaterialsPage({
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <div className="mx-auto max-w-7xl px-6 py-12">
+      <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
         <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
           <div className="space-y-6">
-            <section className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
+            <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/5 sm:p-8">
               <div>
                 <h1 className="text-2xl font-bold">Materialdatabase</h1>
                 <p className="mt-2 text-sm text-neutral-500">
@@ -536,7 +686,7 @@ export default async function MaterialsPage({
                   <input
                     name="supplier"
                     className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3"
-                    placeholder="F.eks. Monter"
+                    placeholder="F.eks. Byggmakker"
                   />
                 </div>
 
@@ -622,7 +772,107 @@ export default async function MaterialsPage({
               </form>
             </section>
 
-            <section className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
+            <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/5 sm:p-8">
+              <div>
+                <h2 className="text-xl font-semibold">Bulk import</h2>
+                <p className="mt-2 text-sm text-neutral-500">
+                  Lim inn mange varer samtidig i formatet:
+                  <br />
+                  <span className="font-medium">
+                    Navn | Leverandør | Enhet | Pris
+                  </span>
+                </p>
+              </div>
+
+              <form action={bulkImportMaterials} className="mt-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium">Linjer</label>
+                  <textarea
+                    name="bulk_materials"
+                    rows={14}
+                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3"
+                    placeholder={`GRAN 48X098 K-VIRKE C24 | Byggmakker | m | 37.80
+G-F 48X048 REKKE KL1 | Byggmakker | m | 26.50
+G-F 23X048 LEKT KL1 BNT | Byggmakker | m | 15.40`}
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium">
+                      Standard leverandør
+                    </label>
+                    <input
+                      name="bulk_supplier"
+                      defaultValue="Byggmakker"
+                      className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium">
+                      Standard enhet
+                    </label>
+                    <select
+                      name="bulk_unit"
+                      defaultValue="m"
+                      className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3"
+                    >
+                      <option value="stk">stk</option>
+                      <option value="m">m</option>
+                      <option value="m2">m²</option>
+                      <option value="m3">m³</option>
+                      <option value="pakke">pakke</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-sm font-medium">Prislogikk</label>
+                    <select
+                      name="bulk_pricing_mode"
+                      defaultValue="markup"
+                      className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3"
+                    >
+                      <option value="markup">Kost + påslag</option>
+                      <option value="market">Markedspris</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium">Svinn %</label>
+                    <input
+                      name="bulk_waste_percent"
+                      type="number"
+                      step="0.01"
+                      defaultValue="10"
+                      className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium">Påslag %</label>
+                    <input
+                      name="bulk_markup_percent"
+                      type="number"
+                      step="0.01"
+                      defaultValue="15"
+                      className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full rounded-2xl bg-black px-4 py-4 text-white"
+                >
+                  Importer materialer
+                </button>
+              </form>
+            </section>
+
+            <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/5 sm:p-8">
               <div>
                 <h2 className="text-xl font-semibold">Ny materialmal</h2>
                 <p className="mt-2 text-sm text-neutral-500">
@@ -661,18 +911,18 @@ export default async function MaterialsPage({
           </div>
 
           <div className="space-y-6">
-            <section className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
-              <div className="flex items-center justify-between gap-4">
+            <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/5 sm:p-8">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-xl font-semibold">Dine materialer</h2>
                   <p className="mt-1 text-sm text-neutral-500">
-                    Egen prisbank for tilbud.
+                    Egen prisbank for tilbud. Rediger priser direkte her.
                   </p>
                 </div>
 
                 <a
                   href="/dashboard"
-                  className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium"
+                  className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium"
                 >
                   Tilbake
                 </a>
@@ -681,72 +931,197 @@ export default async function MaterialsPage({
               {typedMaterials.length === 0 ? (
                 <p className="mt-6 text-neutral-500">Ingen materialer enda.</p>
               ) : (
-                <div className="mt-6 space-y-3">
+                <div className="mt-6 space-y-4">
                   {typedMaterials.map((material) => (
                     <div
                       key={material.id}
                       className="rounded-2xl border border-neutral-200 p-4"
                     >
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <p className="font-medium">{material.name}</p>
-
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
-                            <span>{material.supplier || "Ukjent leverandør"}</span>
-                            <span>•</span>
-                            <span>{material.unit}</span>
-                            {material.sku ? (
-                              <>
-                                <span>•</span>
-                                <span>Vnr: {material.sku}</span>
-                              </>
-                            ) : null}
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-lg font-semibold">{material.name}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+                              <span>{material.supplier || "Ukjent leverandør"}</span>
+                              <span>•</span>
+                              <span>{material.unit}</span>
+                              {material.sku ? (
+                                <>
+                                  <span>•</span>
+                                  <span>Vnr: {material.sku}</span>
+                                </>
+                              ) : null}
+                            </div>
                           </div>
 
-                          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                            <div className="rounded-xl bg-neutral-50 p-3">
-                              <p className="text-neutral-500">Grunnpris</p>
-                              <p className="mt-1 font-medium">
-                                {formatCurrency(material.base_price)} kr
-                              </p>
-                            </div>
+                          <form action={deleteMaterial}>
+                            <input
+                              type="hidden"
+                              name="materialId"
+                              value={material.id}
+                            />
+                            <button
+                              type="submit"
+                              className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
+                            >
+                              Slett
+                            </button>
+                          </form>
+                        </div>
 
-                            <div className="rounded-xl bg-neutral-50 p-3">
-                              <p className="text-neutral-500">Svinn</p>
-                              <p className="mt-1 font-medium">
-                                {material.waste_percent} %
-                              </p>
-                            </div>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          <div className="rounded-xl bg-neutral-50 p-3">
+                            <p className="text-sm text-neutral-500">Grunnpris</p>
+                            <p className="mt-1 text-lg font-semibold">
+                              {formatCurrency(material.base_price)} kr
+                            </p>
+                          </div>
 
-                            <div className="rounded-xl bg-neutral-50 p-3">
-                              <p className="text-neutral-500">Påslag</p>
-                              <p className="mt-1 font-medium">
-                                {material.markup_percent} %
-                              </p>
-                            </div>
+                          <div className="rounded-xl bg-neutral-50 p-3">
+                            <p className="text-sm text-neutral-500">Svinn</p>
+                            <p className="mt-1 text-lg font-semibold">
+                              {material.waste_percent} %
+                            </p>
+                          </div>
 
-                            <div className="rounded-xl bg-neutral-50 p-3">
-                              <p className="text-neutral-500">Anslått salgspris</p>
-                              <p className="mt-1 font-medium">
-                                {formatCurrency(calculateSuggestedPrice(material))} kr
-                              </p>
-                            </div>
+                          <div className="rounded-xl bg-neutral-50 p-3">
+                            <p className="text-sm text-neutral-500">Påslag</p>
+                            <p className="mt-1 text-lg font-semibold">
+                              {material.markup_percent} %
+                            </p>
+                          </div>
+
+                          <div className="rounded-xl bg-neutral-50 p-3">
+                            <p className="text-sm text-neutral-500">Anslått salgspris</p>
+                            <p className="mt-1 text-lg font-semibold">
+                              {formatCurrency(calculateSuggestedPrice(material))} kr
+                            </p>
                           </div>
                         </div>
 
-                        <form action={deleteMaterial}>
-                          <input
-                            type="hidden"
-                            name="materialId"
-                            value={material.id}
-                          />
-                          <button
-                            type="submit"
-                            className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
-                          >
-                            Slett
-                          </button>
-                        </form>
+                        <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+                          <h3 className="text-sm font-semibold">Rask redigering</h3>
+
+                          <form action={updateMaterial} className="mt-3 space-y-4">
+                            <input
+                              type="hidden"
+                              name="materialId"
+                              value={material.id}
+                            />
+
+                            <div className="grid gap-4 lg:grid-cols-2">
+                              <div>
+                                <label className="block text-sm font-medium">Navn</label>
+                                <input
+                                  name="name"
+                                  defaultValue={material.name}
+                                  className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium">
+                                  Leverandør
+                                </label>
+                                <input
+                                  name="supplier"
+                                  defaultValue={material.supplier || ""}
+                                  className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid gap-4 lg:grid-cols-4">
+                              <div>
+                                <label className="block text-sm font-medium">
+                                  Varenummer
+                                </label>
+                                <input
+                                  name="sku"
+                                  defaultValue={material.sku || ""}
+                                  className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium">Enhet</label>
+                                <select
+                                  name="unit"
+                                  defaultValue={material.unit}
+                                  className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                >
+                                  <option value="stk">stk</option>
+                                  <option value="m">m</option>
+                                  <option value="m2">m²</option>
+                                  <option value="m3">m³</option>
+                                  <option value="pakke">pakke</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium">
+                                  Prislogikk
+                                </label>
+                                <select
+                                  name="pricing_mode"
+                                  defaultValue={material.pricing_mode || "markup"}
+                                  className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                >
+                                  <option value="markup">Kost + påslag</option>
+                                  <option value="market">Markedspris</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium">
+                                  Grunnpris
+                                </label>
+                                <input
+                                  name="base_price"
+                                  type="number"
+                                  step="0.01"
+                                  defaultValue={material.base_price}
+                                  className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div>
+                                <label className="block text-sm font-medium">
+                                  Svinn %
+                                </label>
+                                <input
+                                  name="waste_percent"
+                                  type="number"
+                                  step="0.01"
+                                  defaultValue={material.waste_percent}
+                                  className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-sm font-medium">
+                                  Påslag %
+                                </label>
+                                <input
+                                  name="markup_percent"
+                                  type="number"
+                                  step="0.01"
+                                  defaultValue={material.markup_percent}
+                                  className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                                />
+                              </div>
+                            </div>
+
+                            <button
+                              type="submit"
+                              className="rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white"
+                            >
+                              Lagre endringer
+                            </button>
+                          </form>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -754,7 +1129,7 @@ export default async function MaterialsPage({
               )}
             </section>
 
-            <section className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
+            <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/5 sm:p-8">
               <div>
                 <h2 className="text-xl font-semibold">Materialmaler</h2>
                 <p className="mt-1 text-sm text-neutral-500">
