@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import PushEnableCard from "@/components/push-enable-card";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -302,6 +303,10 @@ export default async function DashboardPage() {
                 Logg ut
               </a>
             </div>
+          </div>
+
+          <div className="mt-6">
+            <PushEnableCard />
           </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

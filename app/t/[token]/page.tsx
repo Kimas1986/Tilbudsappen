@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { sendPushToSubscriptions } from "@/lib/push/send";
 
 type PublicOffer = {
   id: string;
@@ -21,6 +22,12 @@ type CompanySettings = {
   company_name: string | null;
   contact_name: string | null;
   contact_phone: string | null;
+};
+
+type PushSubscriptionRow = {
+  endpoint: string;
+  p256dh: string | null;
+  auth: string | null;
 };
 
 type SearchParams = Promise<{
@@ -110,7 +117,7 @@ export default async function PublicOfferPage({
 
     const { data: currentOffer, error } = await supabase
       .from("offers")
-      .select("id, status, valid_until, share_token")
+      .select("id, user_id, title, total, status, valid_until, share_token")
       .eq("id", typedOffer.id)
       .single();
 
@@ -128,16 +135,44 @@ export default async function PublicOfferPage({
       redirect(`/t/${token}`);
     }
 
+    const approvedAt = new Date().toISOString();
+
     const { error: updateError } = await supabase
       .from("offers")
       .update({
         status: "approved",
-        approved_at: new Date().toISOString(),
+        approved_at: approvedAt,
       })
       .eq("id", typedOffer.id);
 
     if (updateError) {
       redirect(`/t/${token}`);
+    }
+
+    try {
+      const { data: subscriptions, error: subscriptionsError } = await supabase
+        .from("push_subscriptions")
+        .select("endpoint, p256dh, auth")
+        .eq("user_id", currentOffer.user_id);
+
+      if (subscriptionsError) {
+        console.error("Feil ved henting av push subscriptions:", subscriptionsError);
+      } else {
+        const validSubscriptions = ((subscriptions as PushSubscriptionRow[] | null) || [])
+          .filter((item) => item.endpoint && item.p256dh && item.auth);
+
+        if (validSubscriptions.length > 0) {
+          await sendPushToSubscriptions(validSubscriptions, {
+            title: "Tilbud godkjent",
+            body: `${
+              String(currentOffer.title || "").trim() || "Et tilbud"
+            } er godkjent${currentOffer.total ? ` • ${formatCurrency(currentOffer.total)} kr` : ""}.`,
+            url: `/offers/${currentOffer.id}`,
+          });
+        }
+      }
+    } catch (pushError) {
+      console.error("Feil ved sending av push:", pushError);
     }
 
     redirect(`/t/${token}?success=approved`);
