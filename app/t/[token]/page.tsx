@@ -26,7 +26,6 @@ type CompanySettings = {
 };
 
 type PushSubscriptionRow = {
-  id?: string;
   endpoint: string;
   p256dh: string | null;
   auth: string | null;
@@ -118,36 +117,34 @@ export default async function PublicOfferPage({
     const supabase = await createClient();
     const admin = createAdminClient();
 
-    const { data: currentOffer, error } = await supabase
+    const { data: currentOffer, error: currentOfferError } = await admin
       .from("offers")
       .select("id, user_id, title, total, status, valid_until, share_token")
       .eq("id", typedOffer.id)
       .single();
 
-    if (error || !currentOffer) {
-      console.error("approveOffer: fant ikke tilbud:", error);
+    if (currentOfferError || !currentOffer) {
+      console.error("approveOffer: fant ikke tilbud:", currentOfferError);
       redirect(`/t/${token}`);
     }
-
-    const expired = isOfferExpired(currentOffer.valid_until);
 
     if (currentOffer.status === "approved") {
       redirect(`/t/${token}?success=already-approved`);
     }
 
-    if (expired) {
+    if (isOfferExpired(currentOffer.valid_until)) {
       redirect(`/t/${token}`);
     }
 
     const approvedAt = new Date().toISOString();
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await admin
       .from("offers")
       .update({
         status: "approved",
         approved_at: approvedAt,
       })
-      .eq("id", typedOffer.id);
+      .eq("id", currentOffer.id);
 
     if (updateError) {
       console.error("approveOffer: kunne ikke oppdatere tilbud:", updateError);
@@ -157,25 +154,20 @@ export default async function PublicOfferPage({
     try {
       const { data: subscriptions, error: subscriptionsError } = await admin
         .from("push_subscriptions")
-        .select("id, endpoint, p256dh, auth")
+        .select("endpoint, p256dh, auth")
         .eq("user_id", currentOffer.user_id);
 
       if (subscriptionsError) {
         console.error(
-          "approveOffer: feil ved henting av push subscriptions:",
+          "approveOffer: feil ved henting av subscriptions:",
           subscriptionsError
         );
       } else {
         const validSubscriptions = ((subscriptions as PushSubscriptionRow[] | null) || [])
           .filter((item) => item.endpoint && item.p256dh && item.auth);
 
-        console.log(
-          "approveOffer: antall subscriptions funnet:",
-          validSubscriptions.length
-        );
-
         if (validSubscriptions.length > 0) {
-          const results = await sendPushToSubscriptions(validSubscriptions, {
+          const pushResults = await sendPushToSubscriptions(validSubscriptions, {
             title: "Tilbud godkjent",
             body: `${
               String(currentOffer.title || "").trim() || "Et tilbud"
@@ -185,36 +177,13 @@ export default async function PublicOfferPage({
             url: `/offers/${currentOffer.id}`,
           });
 
-          console.log("approveOffer: push results:", results);
-
-          const rejectedEndpoints = results
-            .map((result, index) => {
-              if (result.status === "rejected") {
-                return validSubscriptions[index]?.endpoint || null;
-              }
-              return null;
-            })
-            .filter(Boolean) as string[];
-
-          if (rejectedEndpoints.length > 0) {
-            const { error: deleteBadSubsError } = await admin
-              .from("push_subscriptions")
-              .delete()
-              .in("endpoint", rejectedEndpoints);
-
-            if (deleteBadSubsError) {
-              console.error(
-                "approveOffer: kunne ikke slette ugyldige subscriptions:",
-                deleteBadSubsError
-              );
-            }
-          }
+          console.log("approveOffer push results:", pushResults);
         } else {
-          console.log("approveOffer: ingen gyldige subscriptions å sende til.");
+          console.log("approveOffer: ingen gyldige subscriptions");
         }
       }
     } catch (pushError) {
-      console.error("approveOffer: feil ved sending av push:", pushError);
+      console.error("approveOffer: push-feil:", pushError);
     }
 
     redirect(`/t/${token}?success=approved`);
