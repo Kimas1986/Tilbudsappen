@@ -302,11 +302,9 @@ export default async function DashboardPage() {
               >
                 Logg ut
               </a>
-            </div>
-          </div>
 
-          <div className="mt-6">
-            <PushEnableCard />
+              <PushEnableCard />
+            </div>
           </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
