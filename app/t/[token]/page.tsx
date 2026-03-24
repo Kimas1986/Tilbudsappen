@@ -168,12 +168,12 @@ export default async function PublicOfferPage({
 
         if (validSubscriptions.length > 0) {
           const pushResults = await sendPushToSubscriptions(validSubscriptions, {
-            title: "Tilbud godkjent",
+            title: "🔔 Tilbud godkjent",
             body: `${
               String(currentOffer.title || "").trim() || "Et tilbud"
             } er godkjent${
               currentOffer.total ? ` • ${formatCurrency(currentOffer.total)} kr` : ""
-            }.`,
+            }`,
             url: `/offers/${currentOffer.id}`,
           });
 

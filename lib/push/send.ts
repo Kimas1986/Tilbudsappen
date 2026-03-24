@@ -43,6 +43,7 @@ export async function sendPushToSubscriptions(
     title: payload.title,
     body: payload.body,
     url: payload.url || "/dashboard",
+    requireInteraction: true,
   });
 
   const results = await Promise.allSettled(
