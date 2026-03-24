@@ -286,10 +286,16 @@ export default async function InvoicesPage() {
                 {typedInvoices.map((invoice) => (
                   <div
                     key={invoice.id}
-                    className="rounded-2xl border border-neutral-200 bg-white p-4 transition hover:bg-neutral-50"
+                    className="relative rounded-2xl border border-neutral-200 bg-white p-4 transition hover:bg-neutral-50"
                   >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <a href={`/invoices/${invoice.id}`} className="min-w-0 flex-1">
+                    <a
+                      href={`/invoices/${invoice.id}`}
+                      className="absolute inset-0 z-0 rounded-2xl"
+                      aria-label={`Åpne faktura for ${getCustomerName(invoice.customers || null)}`}
+                    />
+
+                    <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
                         <p className="truncate text-lg font-semibold">
                           {getCustomerName(invoice.customers || null)}
                         </p>
@@ -329,7 +335,7 @@ export default async function InvoicesPage() {
                             Betalt: {formatDate(invoice.paid_at)}
                           </p>
                         ) : null}
-                      </a>
+                      </div>
 
                       <div className="flex flex-col items-start gap-3 lg:items-end">
                         <span
@@ -340,28 +346,19 @@ export default async function InvoicesPage() {
                           {getInvoiceStatusLabel(invoice.displayStatus)}
                         </span>
 
-                        <div className="flex gap-2">
-                          <a
-                            href={`/invoices/${invoice.id}`}
-                            className="rounded-xl border border-neutral-300 px-3 py-2 text-sm font-medium text-neutral-900"
+                        <form action={deleteInvoice}>
+                          <input
+                            type="hidden"
+                            name="invoiceId"
+                            value={invoice.id}
+                          />
+                          <button
+                            type="submit"
+                            className="relative z-20 rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
                           >
-                            Åpne
-                          </a>
-
-                          <form action={deleteInvoice}>
-                            <input
-                              type="hidden"
-                              name="invoiceId"
-                              value={invoice.id}
-                            />
-                            <button
-                              type="submit"
-                              className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
-                            >
-                              Slett
-                            </button>
-                          </form>
-                        </div>
+                            Slett
+                          </button>
+                        </form>
                       </div>
                     </div>
                   </div>
