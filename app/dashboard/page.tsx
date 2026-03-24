@@ -409,16 +409,13 @@ export default async function DashboardPage() {
                   return (
                     <div
                       key={offer.id}
-                      className="relative rounded-2xl border border-neutral-200 bg-white p-4 transition hover:bg-neutral-50"
+                      className="rounded-2xl border border-neutral-200 bg-white p-4 transition hover:bg-neutral-50"
                     >
-                      <a
-                        href={`/offers/${offer.id}`}
-                        className="absolute inset-0 z-0 rounded-2xl"
-                        aria-label={`Åpne tilbud for ${getCustomerName(offer)}`}
-                      />
-
-                      <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="min-w-0 flex-1">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <a
+                          href={`/offers/${offer.id}`}
+                          className="block min-w-0 flex-1 rounded-xl"
+                        >
                           <p className="truncate text-lg font-semibold">
                             {getCustomerName(offer)}
                           </p>
@@ -444,7 +441,7 @@ export default async function DashboardPage() {
                               {offer.description}
                             </p>
                           ) : null}
-                        </div>
+                        </a>
 
                         <div className="flex flex-col items-start gap-3 lg:items-end">
                           <span
@@ -459,7 +456,7 @@ export default async function DashboardPage() {
                             <input type="hidden" name="offerId" value={offer.id} />
                             <button
                               type="submit"
-                              className="relative z-20 rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
+                              className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
                             >
                               Slett
                             </button>
