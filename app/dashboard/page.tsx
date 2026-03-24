@@ -239,71 +239,73 @@ export default async function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <div className="mx-auto max-w-7xl px-6 py-12">
-        <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+        <div className="rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-black/5 sm:p-6 lg:p-8">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-sm font-medium text-neutral-500">Tilbudsapp</p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">
+              <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
                 Dashboard
               </h1>
-              <p className="mt-4 text-neutral-600">Du er logget inn som:</p>
-              <p className="mt-2 inline-flex rounded-2xl bg-neutral-100 px-4 py-3 font-medium">
+              <p className="mt-3 text-sm text-neutral-600 sm:text-base">
+                Du er logget inn som:
+              </p>
+              <p className="mt-2 inline-flex max-w-full rounded-2xl bg-neutral-100 px-4 py-3 text-sm font-medium break-all sm:text-base">
                 {user.email}
               </p>
-              <p className="mt-4 max-w-2xl text-sm text-neutral-600">
+              <p className="mt-4 max-w-2xl text-sm leading-6 text-neutral-600">
                 Her ser du status på tilbudene dine, hva som ligger ute akkurat nå
                 og kan gå rett videre til tilbud, økonomi, fakturaer og materialer.
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:w-[420px]">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:w-[420px]">
               <a
                 href="/offers/new"
-                className="rounded-2xl bg-black px-5 py-3 text-center text-sm font-medium text-white"
+                className="rounded-2xl bg-black px-5 py-4 text-center text-sm font-medium text-white transition hover:opacity-90"
               >
                 + Nytt tilbud
               </a>
 
               <a
                 href="/economy"
-                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
+                className="rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-center text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
               >
                 Økonomi
               </a>
 
               <a
                 href="/materials"
-                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
+                className="rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-center text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
               >
                 Materialdatabase
               </a>
 
               <a
                 href="/invoices"
-                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
+                className="rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-center text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
               >
                 Fakturaer
               </a>
 
               <a
                 href="/settings"
-                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
+                className="rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-center text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
               >
                 Innstillinger
               </a>
 
               <a
                 href="/logout"
-                className="rounded-2xl border border-neutral-300 px-5 py-3 text-center text-sm font-medium text-neutral-900"
+                className="rounded-2xl border border-neutral-300 bg-white px-5 py-4 text-center text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
               >
                 Logg ut
               </a>
             </div>
           </div>
 
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl bg-yellow-50 p-5 ring-1 ring-yellow-100">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-yellow-100 sm:p-5">
               <p className="text-sm text-yellow-800">Utkast</p>
               <p className="mt-2 text-2xl font-bold text-yellow-900">
                 {draftCount}
@@ -313,7 +315,7 @@ export default async function DashboardPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl bg-blue-50 p-5 ring-1 ring-blue-100">
+            <div className="rounded-2xl bg-blue-50 p-4 ring-1 ring-blue-100 sm:p-5">
               <p className="text-sm text-blue-800">Sendt</p>
               <p className="mt-2 text-2xl font-bold text-blue-900">
                 {sentCount}
@@ -323,7 +325,7 @@ export default async function DashboardPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl bg-green-50 p-5 ring-1 ring-green-100">
+            <div className="rounded-2xl bg-green-50 p-4 ring-1 ring-green-100 sm:p-5">
               <p className="text-sm text-green-800">Godkjent</p>
               <p className="mt-2 text-2xl font-bold text-green-900">
                 {approvedCount}
@@ -333,19 +335,17 @@ export default async function DashboardPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl bg-red-50 p-5 ring-1 ring-red-100">
+            <div className="rounded-2xl bg-red-50 p-4 ring-1 ring-red-100 sm:p-5">
               <p className="text-sm text-red-800">Utløpt</p>
               <p className="mt-2 text-2xl font-bold text-red-900">
                 {expiredCount}
               </p>
-              <p className="mt-2 text-sm text-red-900/80">
-                Trenger oppfølging
-              </p>
+              <p className="mt-2 text-sm text-red-900/80">Trenger oppfølging</p>
             </div>
           </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl bg-neutral-100 p-5 ring-1 ring-black/5">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl bg-neutral-100 p-4 ring-1 ring-black/5 sm:p-5">
               <p className="text-sm text-neutral-500">Totalt fakturert</p>
               <p className="mt-2 text-2xl font-bold text-neutral-900">
                 {formatCurrency(paidInvoiceValue)} kr
@@ -355,7 +355,7 @@ export default async function DashboardPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl bg-blue-50 p-5 ring-1 ring-blue-100">
+            <div className="rounded-2xl bg-blue-50 p-4 ring-1 ring-blue-100 sm:p-5">
               <p className="text-sm text-blue-800">Utestående fakturaer</p>
               <p className="mt-2 text-2xl font-bold text-blue-900">
                 {formatCurrency(sentInvoiceValue)} kr
@@ -365,7 +365,7 @@ export default async function DashboardPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl bg-orange-50 p-5 ring-1 ring-orange-100">
+            <div className="rounded-2xl bg-orange-50 p-4 ring-1 ring-orange-100 sm:p-5">
               <p className="text-sm text-orange-800">Forfalt</p>
               <p className="mt-2 text-2xl font-bold text-orange-900">
                 {formatCurrency(overdueInvoiceValue)} kr
@@ -375,7 +375,7 @@ export default async function DashboardPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl bg-neutral-100 p-5 ring-1 ring-black/5">
+            <div className="rounded-2xl bg-neutral-100 p-4 ring-1 ring-black/5 sm:p-5">
               <p className="text-sm text-neutral-500">Fakturamodul</p>
               <p className="mt-2 text-2xl font-bold text-neutral-900">
                 {typedInvoices.length}
@@ -386,7 +386,7 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <div className="mt-10">
+          <div className="mt-8 sm:mt-10">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Dine tilbud</h2>
@@ -398,8 +398,10 @@ export default async function DashboardPage() {
             </div>
 
             {typedOffers.length === 0 ? (
-              <div className="mt-4 rounded-2xl bg-neutral-50 p-6 ring-1 ring-black/5">
-                <p className="text-neutral-500">Ingen tilbud enda.</p>
+              <div className="mt-4 rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5 sm:p-6">
+                <p className="text-sm text-neutral-500 sm:text-base">
+                  Ingen tilbud enda.
+                </p>
               </div>
             ) : (
               <div className="mt-4 space-y-3">
@@ -411,52 +413,65 @@ export default async function DashboardPage() {
                       key={offer.id}
                       className="rounded-2xl border border-neutral-200 bg-white p-4 transition hover:bg-neutral-50"
                     >
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="flex flex-col gap-4">
                         <a
                           href={`/offers/${offer.id}`}
-                          className="block min-w-0 flex-1 rounded-xl"
+                          className="block min-w-0 rounded-xl"
                         >
-                          <p className="truncate text-lg font-semibold">
-                            {getCustomerName(offer)}
-                          </p>
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-base font-semibold sm:text-lg">
+                                {getCustomerName(offer)}
+                              </p>
 
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
-                            <span>{formatCurrency(offer.total)} kr</span>
-                            <span>•</span>
-                            <span>{formatDate(offer.created_at)}</span>
-                            {offer.title ? (
-                              <>
-                                <span>•</span>
-                                <span className="truncate">{offer.title}</span>
-                              </>
-                            ) : null}
+                              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-500">
+                                <span>{formatCurrency(offer.total)} kr</span>
+                                <span className="hidden sm:inline">•</span>
+                                <span>{formatDate(offer.created_at)}</span>
+                                {offer.title ? (
+                                  <>
+                                    <span className="hidden sm:inline">•</span>
+                                    <span className="max-w-full truncate">
+                                      {offer.title}
+                                    </span>
+                                  </>
+                                ) : null}
+                              </div>
+
+                              <p className="mt-2 text-sm text-neutral-500">
+                                Gyldig til: {formatDate(offer.valid_until)}
+                              </p>
+
+                              {offer.description ? (
+                                <p className="mt-2 line-clamp-2 text-sm text-neutral-500">
+                                  {offer.description}
+                                </p>
+                              ) : null}
+                            </div>
+
+                            <span
+                              className={`inline-flex self-start rounded-lg px-3 py-1 text-sm font-medium ${getStatusClasses(
+                                displayStatus
+                              )}`}
+                            >
+                              {getStatusLabel(displayStatus)}
+                            </span>
                           </div>
-
-                          <p className="mt-2 text-sm text-neutral-500">
-                            Gyldig til: {formatDate(offer.valid_until)}
-                          </p>
-
-                          {offer.description ? (
-                            <p className="mt-2 line-clamp-2 text-sm text-neutral-500">
-                              {offer.description}
-                            </p>
-                          ) : null}
                         </a>
 
-                        <div className="flex flex-col items-start gap-3 lg:items-end">
-                          <span
-                            className={`rounded-lg px-3 py-1 text-sm font-medium ${getStatusClasses(
-                              displayStatus
-                            )}`}
+                        <div className="flex items-center justify-between gap-3 border-t border-neutral-100 pt-3">
+                          <a
+                            href={`/offers/${offer.id}`}
+                            className="inline-flex min-h-[44px] items-center rounded-xl px-3 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-100"
                           >
-                            {getStatusLabel(displayStatus)}
-                          </span>
+                            Åpne
+                          </a>
 
                           <form action={deleteOffer}>
                             <input type="hidden" name="offerId" value={offer.id} />
                             <button
                               type="submit"
-                              className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
+                              className="inline-flex min-h-[44px] items-center rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-200"
                             >
                               Slett
                             </button>
@@ -470,8 +485,8 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          <div className="mt-10">
-            <div className="flex items-end justify-between gap-4">
+          <div className="mt-8 sm:mt-10">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold">Fakturastatus</h2>
                 <p className="mt-1 text-sm text-neutral-500">
@@ -481,19 +496,21 @@ export default async function DashboardPage() {
 
               <a
                 href="/invoices"
-                className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
+                className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
               >
                 Åpne fakturaer
               </a>
             </div>
 
             {typedInvoices.length === 0 ? (
-              <div className="mt-4 rounded-2xl bg-neutral-50 p-6 ring-1 ring-black/5">
-                <p className="text-neutral-500">Ingen fakturaer enda.</p>
+              <div className="mt-4 rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5 sm:p-6">
+                <p className="text-sm text-neutral-500 sm:text-base">
+                  Ingen fakturaer enda.
+                </p>
               </div>
             ) : (
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
                   <p className="text-sm text-neutral-500">Betalt</p>
                   <p className="mt-2 text-xl font-bold text-green-700">
                     {formatCurrency(paidInvoiceValue)} kr
@@ -503,7 +520,7 @@ export default async function DashboardPage() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
                   <p className="text-sm text-neutral-500">Utestående</p>
                   <p className="mt-2 text-xl font-bold text-blue-700">
                     {formatCurrency(sentInvoiceValue)} kr
@@ -513,7 +530,7 @@ export default async function DashboardPage() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
+                <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
                   <p className="text-sm text-neutral-500">Forfalt</p>
                   <p className="mt-2 text-xl font-bold text-orange-700">
                     {formatCurrency(overdueInvoiceValue)} kr

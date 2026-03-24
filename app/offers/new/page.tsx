@@ -114,6 +114,7 @@ export default function NewOfferPage() {
   const [lastAppliedAiInput, setLastAppliedAiInput] = useState("");
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
   const [offerId, setOfferId] = useState<string | null>(null);
@@ -482,6 +483,8 @@ export default function NewOfferPage() {
     setSaveSuccess("");
 
     try {
+      setIsSendingEmail(true);
+
       const response = await fetch(`/api/offers/${offerId}/send`, {
         method: "POST",
       });
@@ -498,6 +501,8 @@ export default function NewOfferPage() {
       setSaveError(
         error instanceof Error ? error.message : "Kunne ikke sende e-post"
       );
+    } finally {
+      setIsSendingEmail(false);
     }
   }
 
@@ -505,14 +510,14 @@ export default function NewOfferPage() {
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mx-auto max-w-6xl px-4 py-4 pb-28 sm:px-6 sm:py-6 sm:pb-32 lg:px-8 lg:py-8 lg:pb-10">
+        <div className="mb-5 flex flex-col gap-3 sm:mb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-neutral-500">Tilbudsapp</p>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight">
+            <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
               Nytt tilbud
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-neutral-600">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
               Fyll inn kunde, jobb og pris. Du kan bruke AI til å lage et
               komplett forslag før du lagrer tilbudet.
             </p>
@@ -520,20 +525,20 @@ export default function NewOfferPage() {
 
           <a
             href="/dashboard"
-            className="inline-flex rounded-2xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-900"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
           >
             Tilbake til dashboard
           </a>
         </div>
 
-        <div className="mb-6 rounded-3xl border border-black bg-black px-5 py-5 text-white shadow-sm sm:px-6">
+        <div className="mb-5 rounded-3xl border border-black bg-black px-4 py-5 text-white shadow-sm sm:mb-6 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-sm font-medium text-white/70">1-klikk tilbud</p>
-              <h2 className="mt-1 text-2xl font-bold tracking-tight">
+              <h2 className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">
                 Skriv jobben kort. Få ferdig forslag med én gang.
               </h2>
-              <p className="mt-2 text-sm text-white/75">
+              <p className="mt-2 text-sm leading-6 text-white/75">
                 Dette fyller inn tittel, beskrivelse og prisoppsett automatisk.
                 Materialer fra databasen eller ferdige maler legger du på under
                 hvis du vil gjøre tilbudet mer presist.
@@ -542,7 +547,7 @@ export default function NewOfferPage() {
 
             <div className="rounded-2xl bg-white/10 px-4 py-3 text-sm">
               <p className="text-white/70">Status</p>
-              <p className="mt-1 font-medium">
+              <p className="mt-1 font-medium break-words">
                 {lastAppliedAiInput
                   ? `Sist generert fra: "${lastAppliedAiInput}"`
                   : "Ingen AI-forslag brukt enda"}
@@ -551,9 +556,9 @@ export default function NewOfferPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="space-y-6 lg:col-span-2">
-            <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
+        <div className="grid gap-5 lg:grid-cols-3 lg:gap-6">
+          <div className="space-y-5 lg:col-span-2 lg:space-y-6">
+            <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/5 sm:p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold">Kunde og jobb</h2>
                 <p className="mt-1 text-sm text-neutral-500">
@@ -567,7 +572,7 @@ export default function NewOfferPage() {
                   name="customer"
                   value={customer}
                   onChange={(e) => setCustomer(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                  className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 px-4 py-3 text-base outline-none focus:border-black"
                   placeholder="F.eks. Ola Nordmann"
                 />
               </div>
@@ -580,7 +585,7 @@ export default function NewOfferPage() {
                     type="email"
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                    className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 px-4 py-3 text-base outline-none focus:border-black"
                     placeholder="F.eks. ola@epost.no"
                   />
                 </div>
@@ -592,7 +597,7 @@ export default function NewOfferPage() {
                     type="text"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                    className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 px-4 py-3 text-base outline-none focus:border-black"
                     placeholder="F.eks. 90000000"
                   />
                 </div>
@@ -614,7 +619,7 @@ export default function NewOfferPage() {
                   value={aiInput}
                   onChange={(e) => setAiInput(e.target.value)}
                   placeholder="F.eks. sette opp lettvegg 10m2"
-                  className="mt-3 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 outline-none focus:border-black"
+                  className="mt-3 min-h-[48px] w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base outline-none focus:border-black"
                 />
 
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -623,19 +628,19 @@ export default function NewOfferPage() {
                       key={item}
                       type="button"
                       onClick={() => handleQuickInputClick(item)}
-                      className="rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700"
+                      className="min-h-[40px] rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 transition hover:bg-neutral-100"
                     >
                       {item}
                     </button>
                   ))}
                 </div>
 
-                <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={handleGenerateText}
                     disabled={isGenerating}
-                    className="rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
+                    className="min-h-[48px] rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white disabled:opacity-60"
                   >
                     {isGenerating
                       ? "Genererer..."
@@ -645,7 +650,7 @@ export default function NewOfferPage() {
                   <button
                     type="button"
                     onClick={handleClearAiDraft}
-                    className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm font-medium text-neutral-900"
+                    className="min-h-[48px] rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-sm font-medium text-neutral-900 transition hover:bg-neutral-100"
                   >
                     Tøm forslag
                   </button>
@@ -665,7 +670,7 @@ export default function NewOfferPage() {
                         </p>
                       </div>
 
-                      <div className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                      <div className="inline-flex self-start rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
                         Lagt inn automatisk
                       </div>
                     </div>
@@ -742,7 +747,7 @@ export default function NewOfferPage() {
                   name="title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                  className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 px-4 py-3 text-base outline-none focus:border-black"
                   placeholder="F.eks. Sette opp lettvegg"
                 />
               </div>
@@ -754,13 +759,13 @@ export default function NewOfferPage() {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={8}
-                  className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                  className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 text-base outline-none focus:border-black"
                   placeholder="F.eks. Oppsetting av lettvegg inkludert nødvendig tilpasning og fagmessig utførelse."
                 />
               </div>
             </section>
 
-            <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
+            <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/5 sm:p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold">Materialer</h2>
                 <p className="mt-1 text-sm text-neutral-500">
@@ -787,7 +792,7 @@ export default function NewOfferPage() {
                         setSelectedTemplateId(e.target.value);
                         setTemplateMessage("");
                       }}
-                      className="rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                      className="min-h-[48px] rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base"
                       disabled={materialsLoading}
                     >
                       <option value="">
@@ -807,7 +812,7 @@ export default function NewOfferPage() {
                       type="button"
                       onClick={handleApplyTemplate}
                       disabled={!selectedTemplateId}
-                      className="rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+                      className="min-h-[48px] rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
                     >
                       Legg inn mal
                     </button>
@@ -839,7 +844,7 @@ export default function NewOfferPage() {
                 <select
                   value={selectedMaterialId}
                   onChange={(e) => setSelectedMaterialId(e.target.value)}
-                  className="rounded-2xl border border-neutral-300 px-4 py-3"
+                  className="min-h-[48px] rounded-2xl border border-neutral-300 px-4 py-3 text-base"
                   disabled={materialsLoading}
                 >
                   <option value="">
@@ -859,7 +864,7 @@ export default function NewOfferPage() {
                 <button
                   type="button"
                   onClick={handleAddMaterial}
-                  className="rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white"
+                  className="min-h-[48px] rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white"
                 >
                   Legg til
                 </button>
@@ -869,15 +874,15 @@ export default function NewOfferPage() {
                 <p className="mt-3 text-sm text-red-600">{materialsError}</p>
               ) : null}
 
-              <div className="mt-4 flex items-center gap-3 rounded-2xl bg-neutral-50 px-4 py-3">
+              <div className="mt-4 flex items-start gap-3 rounded-2xl bg-neutral-50 px-4 py-3">
                 <input
                   id="useSavedMaterials"
                   type="checkbox"
                   checked={useSavedMaterials}
                   onChange={() => setUseSavedMaterials(!useSavedMaterials)}
-                  className="h-4 w-4"
+                  className="mt-1 h-4 w-4"
                 />
-                <label htmlFor="useSavedMaterials" className="text-sm font-medium">
+                <label htmlFor="useSavedMaterials" className="text-sm font-medium leading-6">
                   Bruk materialene over som grunnlag for materialkost
                 </label>
               </div>
@@ -893,8 +898,8 @@ export default function NewOfferPage() {
                       key={item.materialId}
                       className="rounded-2xl border border-neutral-200 p-4"
                     >
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0 flex-1">
+                      <div className="flex flex-col gap-4">
+                        <div className="min-w-0">
                           <p className="font-medium">{item.name}</p>
                           <p className="mt-1 text-sm text-neutral-500">
                             {item.supplier || "Ukjent leverandør"} • {item.unit}
@@ -913,40 +918,42 @@ export default function NewOfferPage() {
                                     e.target.value
                                   )
                                 }
-                                className="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2"
+                                className="mt-1 min-h-[44px] w-full rounded-xl border border-neutral-300 px-3 py-2 text-base"
                               />
                             </div>
 
                             <div>
                               <p className="text-xs text-neutral-500">Enhetspris</p>
-                              <p className="mt-1 rounded-xl bg-neutral-50 px-3 py-2 text-sm font-medium">
+                              <p className="mt-1 rounded-xl bg-neutral-50 px-3 py-3 text-sm font-medium">
                                 {formatCurrency(item.unitPrice)} kr
                               </p>
                             </div>
 
                             <div>
                               <p className="text-xs text-neutral-500">Svinn</p>
-                              <p className="mt-1 rounded-xl bg-neutral-50 px-3 py-2 text-sm font-medium">
+                              <p className="mt-1 rounded-xl bg-neutral-50 px-3 py-3 text-sm font-medium">
                                 {item.wastePercent} %
                               </p>
                             </div>
 
                             <div>
                               <p className="text-xs text-neutral-500">Linjesum</p>
-                              <p className="mt-1 rounded-xl bg-neutral-50 px-3 py-2 text-sm font-medium">
+                              <p className="mt-1 rounded-xl bg-neutral-50 px-3 py-3 text-sm font-medium">
                                 {formatCurrency(item.lineTotal)} kr
                               </p>
                             </div>
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMaterial(item.materialId)}
-                          className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
-                        >
-                          Fjern
-                        </button>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMaterial(item.materialId)}
+                            className="min-h-[44px] rounded-xl bg-red-100 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-200"
+                          >
+                            Fjern
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -954,7 +961,7 @@ export default function NewOfferPage() {
               )}
 
               <div className="mt-4 rounded-2xl bg-neutral-100 p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="font-medium">Total materialkost</span>
                   <span className="text-lg font-bold">
                     {formatCurrency(calculatedMaterialCost)} kr
@@ -963,7 +970,7 @@ export default function NewOfferPage() {
               </div>
             </section>
 
-            <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6">
+            <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/5 sm:p-6">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold">Prisoppsett</h2>
                 <p className="mt-1 text-sm text-neutral-500">
@@ -1029,7 +1036,7 @@ export default function NewOfferPage() {
                     value={fixedPrice}
                     onChange={(e) => setFixedPrice(e.target.value)}
                     placeholder="F.eks. 12500"
-                    className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                    className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 px-4 py-3 text-base outline-none focus:border-black"
                   />
                 </div>
               )}
@@ -1045,7 +1052,7 @@ export default function NewOfferPage() {
                       value={hourlyRate}
                       onChange={(e) => setHourlyRate(e.target.value)}
                       placeholder="F.eks. 950"
-                      className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                      className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 px-4 py-3 text-base outline-none focus:border-black"
                     />
                   </div>
 
@@ -1058,7 +1065,7 @@ export default function NewOfferPage() {
                       value={hours}
                       onChange={(e) => setHours(e.target.value)}
                       placeholder="F.eks. 8"
-                      className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                      className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 px-4 py-3 text-base outline-none focus:border-black"
                     />
                   </div>
                 </div>
@@ -1073,7 +1080,7 @@ export default function NewOfferPage() {
                   value={materials}
                   onChange={(e) => setMaterials(e.target.value)}
                   placeholder="F.eks. 3200"
-                  className="mt-2 w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-black"
+                  className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 px-4 py-3 text-base outline-none focus:border-black"
                 />
                 <p className="mt-2 text-xs text-neutral-500">
                   Dette feltet fylles automatisk hvis du bruker materiallisten over,
@@ -1081,24 +1088,24 @@ export default function NewOfferPage() {
                 </p>
               </div>
 
-              <div className="mt-5 flex items-center gap-3 rounded-2xl bg-neutral-50 px-4 py-3">
+              <div className="mt-5 flex items-start gap-3 rounded-2xl bg-neutral-50 px-4 py-3">
                 <input
                   id="vatEnabled"
                   name="vatEnabled"
                   type="checkbox"
                   checked={vatEnabled}
                   onChange={() => setVatEnabled(!vatEnabled)}
-                  className="h-4 w-4"
+                  className="mt-1 h-4 w-4"
                 />
-                <label htmlFor="vatEnabled" className="text-sm font-medium">
+                <label htmlFor="vatEnabled" className="text-sm font-medium leading-6">
                   Inkluder MVA
                 </label>
               </div>
             </section>
           </div>
 
-          <div className="space-y-6">
-            <section className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-black/5 sm:p-6 lg:sticky lg:top-6">
+          <div className="space-y-5 lg:space-y-6">
+            <section className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-black/5 sm:p-6 lg:sticky lg:top-6">
               <div>
                 <h2 className="text-lg font-semibold">Oppsummering</h2>
                 <p className="mt-1 text-sm text-neutral-500">
@@ -1108,28 +1115,28 @@ export default function NewOfferPage() {
 
               <div className="mt-5 rounded-2xl bg-neutral-50 p-4">
                 <p className="text-sm text-neutral-500">Kunde</p>
-                <p className="mt-1 font-medium">
+                <p className="mt-1 font-medium break-words">
                   {customer.trim() || "Ikke fylt inn enda"}
                 </p>
               </div>
 
               <div className="mt-4 rounded-2xl bg-neutral-50 p-4">
                 <p className="text-sm text-neutral-500">E-post</p>
-                <p className="mt-1 font-medium">
+                <p className="mt-1 font-medium break-words">
                   {customerEmail.trim() || "Ikke fylt inn enda"}
                 </p>
               </div>
 
               <div className="mt-4 rounded-2xl bg-neutral-50 p-4">
                 <p className="text-sm text-neutral-500">Telefon</p>
-                <p className="mt-1 font-medium">
+                <p className="mt-1 font-medium break-words">
                   {customerPhone.trim() || "Ikke fylt inn enda"}
                 </p>
               </div>
 
               <div className="mt-4 rounded-2xl bg-neutral-50 p-4">
                 <p className="text-sm text-neutral-500">Tittel</p>
-                <p className="mt-1 font-medium">
+                <p className="mt-1 font-medium break-words">
                   {title.trim() || "Ikke fylt inn enda"}
                 </p>
               </div>
@@ -1165,14 +1172,14 @@ export default function NewOfferPage() {
               ) : null}
 
               <div className="mt-4 space-y-3 rounded-2xl bg-neutral-100 p-4">
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between gap-4 text-sm">
                   <span className="text-neutral-500">Subtotal</span>
                   <span className="font-medium">
                     {formatCurrency(totals.subtotal)} kr
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between gap-4 text-sm">
                   <span className="text-neutral-500">MVA</span>
                   <span className="font-medium">
                     {formatCurrency(totals.vat)} kr
@@ -1181,7 +1188,7 @@ export default function NewOfferPage() {
 
                 <div className="h-px bg-neutral-200" />
 
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-4">
                   <span className="font-medium">Totalt</span>
                   <span className="text-xl font-bold">
                     {formatCurrency(totals.total)} kr
@@ -1189,14 +1196,16 @@ export default function NewOfferPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSaveOffer}
-                disabled={isSaving}
-                className="mt-5 w-full rounded-2xl bg-black px-4 py-4 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {isSaving ? "Lagrer..." : "Lagre utkast"}
-              </button>
+              <div className="mt-5 hidden lg:block">
+                <button
+                  type="button"
+                  onClick={handleSaveOffer}
+                  disabled={isSaving}
+                  className="w-full min-h-[52px] rounded-2xl bg-black px-4 py-4 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  {isSaving ? "Lagrer..." : "Lagre utkast"}
+                </button>
+              </div>
 
               {offerId ? (
                 <div className="mt-5 space-y-3">
@@ -1204,7 +1213,7 @@ export default function NewOfferPage() {
                     href={pdfUrl || "#"}
                     target="_blank"
                     rel="noreferrer"
-                    className="block rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white"
+                    className="block min-h-[48px] rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white"
                   >
                     Åpne PDF
                   </a>
@@ -1213,7 +1222,7 @@ export default function NewOfferPage() {
                     href={pdfUrl || "#"}
                     target="_blank"
                     rel="noreferrer"
-                    className="block rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
+                    className="block min-h-[48px] rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
                   >
                     Last ned PDF
                   </a>
@@ -1221,9 +1230,10 @@ export default function NewOfferPage() {
                   <button
                     type="button"
                     onClick={handleSendEmail}
-                    className="block w-full rounded-2xl bg-blue-600 px-4 py-3 text-center text-sm font-medium text-white"
+                    disabled={isSendingEmail}
+                    className="block min-h-[48px] w-full rounded-2xl bg-blue-600 px-4 py-3 text-center text-sm font-medium text-white disabled:opacity-60"
                   >
-                    Send på e-post
+                    {isSendingEmail ? "Sender..." : "Send på e-post"}
                   </button>
                 </div>
               ) : null}
@@ -1236,12 +1246,40 @@ export default function NewOfferPage() {
                 <p className="mt-4 text-sm text-green-600">{saveSuccess}</p>
               ) : null}
 
-              <p className="mt-3 text-xs text-neutral-500">
+              <p className="mt-3 text-xs leading-5 text-neutral-500">
                 Lagre først utkast. Deretter kan du åpne PDF, laste ned PDF og
                 sende tilbudet på e-post direkte fra denne siden.
               </p>
             </section>
           </div>
+        </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-3 flex items-center justify-between gap-4 rounded-2xl bg-neutral-100 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-xs text-neutral-500">Totalt</p>
+              <p className="truncate text-lg font-bold">
+                {formatCurrency(totals.total)} kr
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-neutral-500">Materialer</p>
+              <p className="text-sm font-medium">
+                {formatCurrency(calculatedMaterialCost)} kr
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSaveOffer}
+            disabled={isSaving}
+            className="w-full min-h-[52px] rounded-2xl bg-black px-4 py-4 text-sm font-medium text-white disabled:opacity-60"
+          >
+            {isSaving ? "Lagrer..." : "Lagre utkast"}
+          </button>
         </div>
       </div>
     </main>

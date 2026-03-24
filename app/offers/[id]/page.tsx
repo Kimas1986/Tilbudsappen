@@ -33,7 +33,7 @@ type CustomerRelation =
   | null;
 
 type OfferRow = {
-  id: string;
+  id: string | null;
   title: string | null;
   description: string | null;
   status: string;
@@ -207,7 +207,10 @@ function buildInvoiceNumber(year: number, sequence: number) {
   return `${year}-${String(sequence).padStart(4, "0")}`;
 }
 
-function parseInvoiceSequence(invoiceNumber: string | null | undefined, year: number) {
+function parseInvoiceSequence(
+  invoiceNumber: string | null | undefined,
+  year: number
+) {
   const value = String(invoiceNumber || "").trim();
   const match = value.match(/^(\d{4})-(\d{4})$/);
 
@@ -290,7 +293,10 @@ export default async function OfferPage({
       .maybeSingle();
 
     if (existingInvoiceError) {
-      console.error("Feil ved oppslag av eksisterende faktura:", existingInvoiceError);
+      console.error(
+        "Feil ved oppslag av eksisterende faktura:",
+        existingInvoiceError
+      );
       redirect(`/offers/${id}?error=Kunne+ikke+sjekke+eksisterende+faktura`);
     }
 
@@ -324,7 +330,9 @@ export default async function OfferPage({
     }
 
     if (sourceOffer.status !== "approved") {
-      redirect(`/offers/${id}?error=Faktura+kan+bare+opprettes+fra+godkjente+tilbud`);
+      redirect(
+        `/offers/${id}?error=Faktura+kan+bare+opprettes+fra+godkjente+tilbud`
+      );
     }
 
     const { data: sourceMaterials, error: sourceMaterialsError } = await supabase
@@ -337,7 +345,10 @@ export default async function OfferPage({
       .order("created_at", { ascending: true });
 
     if (sourceMaterialsError) {
-      console.error("Feil ved henting av materiallinjer for faktura:", sourceMaterialsError);
+      console.error(
+        "Feil ved henting av materiallinjer for faktura:",
+        sourceMaterialsError
+      );
       redirect(`/offers/${id}?error=Kunne+ikke+hente+materiallinjer`);
     }
 
@@ -486,7 +497,10 @@ export default async function OfferPage({
       .order("created_at", { ascending: true });
 
     if (sourceMaterialsError) {
-      console.error("Feil ved henting av materialer for mal:", sourceMaterialsError);
+      console.error(
+        "Feil ved henting av materialer for mal:",
+        sourceMaterialsError
+      );
       redirect(`/offers/${offerId}?error=Kunne+ikke+hente+materiallinjer`);
     }
 
@@ -499,9 +513,7 @@ export default async function OfferPage({
     }
 
     const description =
-      templateDescription ||
-      String(sourceOffer.description || "").trim() ||
-      null;
+      templateDescription || String(sourceOffer.description || "").trim() || null;
 
     const { data: createdTemplate, error: createTemplateError } = await supabase
       .from("material_templates")
@@ -514,7 +526,10 @@ export default async function OfferPage({
       .single();
 
     if (createTemplateError || !createdTemplate) {
-      console.error("Feil ved opprettelse av mal fra tilbud:", createTemplateError);
+      console.error(
+        "Feil ved opprettelse av mal fra tilbud:",
+        createTemplateError
+      );
       redirect(`/offers/${offerId}?error=Kunne+ikke+opprette+materialmal`);
     }
 
@@ -529,7 +544,10 @@ export default async function OfferPage({
       .insert(insertRows);
 
     if (insertItemsError) {
-      console.error("Feil ved opprettelse av mallinjer fra tilbud:", insertItemsError);
+      console.error(
+        "Feil ved opprettelse av mallinjer fra tilbud:",
+        insertItemsError
+      );
 
       await supabase
         .from("material_templates")
@@ -540,9 +558,7 @@ export default async function OfferPage({
       redirect(`/offers/${offerId}?error=Kunne+ikke+lagre+mallinjer`);
     }
 
-    redirect(
-      `/offers/${offerId}?success=Materialmal+opprettet+fra+tilbudet`
-    );
+    redirect(`/offers/${offerId}?success=Materialmal+opprettet+fra+tilbudet`);
   }
 
   async function updateExistingTemplateFromOffer(formData: FormData) {
@@ -572,7 +588,9 @@ export default async function OfferPage({
     }
 
     if (!templateId) {
-      redirect(`/offers/${offerId}?error=Velg+en+eksisterende+materialmal+f%C3%B8rst`);
+      redirect(
+        `/offers/${offerId}?error=Velg+en+eksisterende+materialmal+f%C3%B8rst`
+      );
     }
 
     const [
@@ -601,7 +619,10 @@ export default async function OfferPage({
     ]);
 
     if (sourceOfferError || !sourceOffer) {
-      console.error("Feil ved henting av tilbud for maloppdatering:", sourceOfferError);
+      console.error(
+        "Feil ved henting av tilbud for maloppdatering:",
+        sourceOfferError
+      );
       redirect(`/offers/${offerId}?error=Kunne+ikke+hente+tilbudet`);
     }
 
@@ -611,7 +632,10 @@ export default async function OfferPage({
     }
 
     if (sourceMaterialsError) {
-      console.error("Feil ved henting av materialer for maloppdatering:", sourceMaterialsError);
+      console.error(
+        "Feil ved henting av materialer for maloppdatering:",
+        sourceMaterialsError
+      );
       redirect(`/offers/${offerId}?error=Kunne+ikke+hente+materiallinjer`);
     }
 
@@ -650,7 +674,10 @@ export default async function OfferPage({
         .eq("user_id", user.id);
 
       if (updateTemplateError) {
-        console.error("Feil ved oppdatering av materialmal:", updateTemplateError);
+        console.error(
+          "Feil ved oppdatering av materialmal:",
+          updateTemplateError
+        );
         redirect(`/offers/${offerId}?error=Kunne+ikke+oppdatere+maldetaljer`);
       }
     }
@@ -663,8 +690,13 @@ export default async function OfferPage({
         .eq("user_id", user.id);
 
       if (deleteItemsError) {
-        console.error("Feil ved tømming av eksisterende mallinjer:", deleteItemsError);
-        redirect(`/offers/${offerId}?error=Kunne+ikke+t%C3%B8mme+eksisterende+mallinjer`);
+        console.error(
+          "Feil ved tømming av eksisterende mallinjer:",
+          deleteItemsError
+        );
+        redirect(
+          `/offers/${offerId}?error=Kunne+ikke+t%C3%B8mme+eksisterende+mallinjer`
+        );
       }
 
       const { error: insertItemsError } = await supabase
@@ -688,8 +720,13 @@ export default async function OfferPage({
       .eq("user_id", user.id);
 
     if (existingItemsError) {
-      console.error("Feil ved henting av eksisterende mallinjer:", existingItemsError);
-      redirect(`/offers/${offerId}?error=Kunne+ikke+hente+eksisterende+mallinjer`);
+      console.error(
+        "Feil ved henting av eksisterende mallinjer:",
+        existingItemsError
+      );
+      redirect(
+        `/offers/${offerId}?error=Kunne+ikke+hente+eksisterende+mallinjer`
+      );
     }
 
     const existingMap = new Map(
@@ -729,8 +766,13 @@ export default async function OfferPage({
         .eq("user_id", user.id);
 
       if (updateItemError) {
-        console.error("Feil ved oppdatering av eksisterende mallinje:", updateItemError);
-        redirect(`/offers/${offerId}?error=Kunne+ikke+oppdatere+eksisterende+mallinje`);
+        console.error(
+          "Feil ved oppdatering av eksisterende mallinje:",
+          updateItemError
+        );
+        redirect(
+          `/offers/${offerId}?error=Kunne+ikke+oppdatere+eksisterende+mallinje`
+        );
       }
     }
 
@@ -740,7 +782,10 @@ export default async function OfferPage({
         .insert(rowsToInsert);
 
       if (insertNewItemsError) {
-        console.error("Feil ved innlegging av nye mallinjer:", insertNewItemsError);
+        console.error(
+          "Feil ved innlegging av nye mallinjer:",
+          insertNewItemsError
+        );
         redirect(`/offers/${offerId}?error=Kunne+ikke+legge+til+nye+mallinjer`);
       }
     }
@@ -805,7 +850,10 @@ export default async function OfferPage({
   }
 
   if (existingInvoiceError) {
-    console.error("Feil ved henting av eksisterende faktura:", existingInvoiceError);
+    console.error(
+      "Feil ved henting av eksisterende faktura:",
+      existingInvoiceError
+    );
   }
 
   const typedOffer = offer as OfferRow;
@@ -816,7 +864,7 @@ export default async function OfferPage({
     .select(
       "id, material_id, material_name, supplier, unit, quantity, unit_price, waste_percent, markup_percent, line_total"
     )
-    .eq("offer_id", typedOffer.id)
+    .eq("offer_id", typedOffer.id as string)
     .eq("user_id", user.id)
     .order("created_at", { ascending: true });
 
@@ -863,22 +911,22 @@ export default async function OfferPage({
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <div className="mx-auto max-w-6xl px-6 py-12">
-        <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
+      <div className="mx-auto max-w-6xl px-4 py-4 pb-28 sm:px-6 sm:py-6 sm:pb-32 lg:px-8 lg:py-8 lg:pb-10">
+        <div className="rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-black/5 sm:p-6 lg:p-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-sm font-medium text-neutral-500">Tilbud</p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">
+              <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
                 {typedOffer.title || "Tilbud"}
               </h1>
 
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+              <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-500">
                 <span>Opprettet {formatDateTime(typedOffer.created_at)}</span>
-                <span>•</span>
+                <span className="hidden sm:inline">•</span>
                 <span>Gyldig til {formatDate(typedOffer.valid_until)}</span>
                 {typedOffer.approved_at ? (
                   <>
-                    <span>•</span>
+                    <span className="hidden sm:inline">•</span>
                     <span>Godkjent {formatDateTime(typedOffer.approved_at)}</span>
                   </>
                 ) : null}
@@ -896,7 +944,7 @@ export default async function OfferPage({
 
               <Link
                 href="/dashboard"
-                className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
+                className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-neutral-300 px-4 py-3 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
               >
                 Tilbake til dashboard
               </Link>
@@ -915,29 +963,29 @@ export default async function OfferPage({
             </div>
           ) : null}
 
-          <div className="mt-8 grid gap-4 lg:grid-cols-4">
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
               <p className="text-sm text-neutral-500">Totalpris</p>
               <p className="mt-2 text-2xl font-bold">
                 {formatCurrency(typedOffer.total)} kr
               </p>
             </div>
 
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+            <div className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
               <p className="text-sm text-neutral-500">Arbeid</p>
               <p className="mt-2 text-2xl font-bold">
                 {formatCurrency(laborValue)} kr
               </p>
             </div>
 
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+            <div className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
               <p className="text-sm text-neutral-500">Materialer</p>
               <p className="mt-2 text-2xl font-bold">
                 {formatCurrency(typedOffer.materials_cost)} kr
               </p>
             </div>
 
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+            <div className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
               <p className="text-sm text-neutral-500">MVA</p>
               <p className="mt-2 text-2xl font-bold">
                 {formatCurrency(typedOffer.vat_amount)} kr
@@ -945,11 +993,11 @@ export default async function OfferPage({
             </div>
           </div>
 
-          <div className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+          <div className="mt-6 grid gap-5 lg:grid-cols-[1.1fr_0.9fr] lg:gap-6">
+            <section className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
               <h2 className="text-lg font-semibold">Tilbudsinnhold</h2>
 
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5">
                   <p className="text-sm text-neutral-500">Prisform</p>
                   <p className="mt-1 font-medium">
@@ -991,25 +1039,25 @@ export default async function OfferPage({
 
                 <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5 sm:col-span-2">
                   <p className="text-sm text-neutral-500">Kunde</p>
-                  <p className="mt-1 font-medium">{customer.name}</p>
-                  <div className="mt-2 flex flex-wrap gap-4 text-sm text-neutral-500">
-                    <span>E-post: {customer.email || "-"}</span>
-                    <span>Telefon: {customer.phone || "-"}</span>
+                  <p className="mt-1 font-medium break-words">{customer.name}</p>
+                  <div className="mt-2 grid gap-2 text-sm text-neutral-500 sm:grid-cols-2">
+                    <span className="break-words">E-post: {customer.email || "-"}</span>
+                    <span className="break-words">Telefon: {customer.phone || "-"}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-black/5">
+              <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-black/5">
                 <p className="text-sm text-neutral-500">Beskrivelse</p>
-                <p className="mt-2 whitespace-pre-wrap">
+                <p className="mt-2 whitespace-pre-wrap break-words">
                   {typedOffer.description || "-"}
                 </p>
               </div>
             </section>
 
-            <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+            <section className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5 lg:sticky lg:top-6">
               <h2 className="text-lg font-semibold">Handlinger og maler</h2>
-              <p className="mt-2 text-sm text-neutral-600">
+              <p className="mt-2 text-sm leading-6 text-neutral-600">
                 Herfra kan du åpne PDF, sende e-post, dele kundelenken, lage
                 faktura og bygge materialmaler fra tilbudet.
               </p>
@@ -1019,7 +1067,7 @@ export default async function OfferPage({
                   href={pdfUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="cursor-pointer rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white"
+                  className="inline-flex min-h-[48px] items-center justify-center rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white"
                 >
                   Åpne PDF
                 </a>
@@ -1028,7 +1076,7 @@ export default async function OfferPage({
                   href={pdfUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="cursor-pointer rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
+                  className="inline-flex min-h-[48px] items-center justify-center rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
                 >
                   Last ned PDF
                 </a>
@@ -1036,7 +1084,7 @@ export default async function OfferPage({
                 <form action={sendUrl} method="post">
                   <button
                     type="submit"
-                    className="w-full cursor-pointer rounded-2xl bg-blue-600 px-4 py-3 text-center text-sm font-medium text-white"
+                    className="w-full min-h-[48px] rounded-2xl bg-blue-600 px-4 py-3 text-center text-sm font-medium text-white"
                   >
                     Send tilbud på e-post
                   </button>
@@ -1045,7 +1093,7 @@ export default async function OfferPage({
                 {existingInvoiceId ? (
                   <Link
                     href={`/invoices/${existingInvoiceId}`}
-                    className="cursor-pointer rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white"
+                    className="inline-flex min-h-[48px] items-center justify-center rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white"
                   >
                     Åpne faktura
                   </Link>
@@ -1054,7 +1102,7 @@ export default async function OfferPage({
                     <button
                       type="submit"
                       disabled={!canCreateInvoice}
-                      className="w-full cursor-pointer rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      className="w-full min-h-[48px] rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Lag faktura
                     </button>
@@ -1063,7 +1111,7 @@ export default async function OfferPage({
 
                 <Link
                   href="/materials"
-                  className="cursor-pointer rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
+                  className="inline-flex min-h-[48px] items-center justify-center rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
                 >
                   Åpne materialmaler
                 </Link>
@@ -1119,7 +1167,7 @@ export default async function OfferPage({
                 </p>
 
                 <form action={createTemplateFromOffer} className="mt-4 space-y-3">
-                  <input type="hidden" name="offerId" value={typedOffer.id} />
+                  <input type="hidden" name="offerId" value={typedOffer.id || ""} />
 
                   <div>
                     <label className="block text-sm font-medium text-emerald-900">
@@ -1128,7 +1176,7 @@ export default async function OfferPage({
                     <input
                       name="templateName"
                       defaultValue={defaultTemplateName}
-                      className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                      className="mt-2 min-h-[48px] w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
                       placeholder="F.eks. Lettvegg standard"
                       disabled={!canCreateTemplate}
                     />
@@ -1151,7 +1199,7 @@ export default async function OfferPage({
                   <button
                     type="submit"
                     disabled={!canCreateTemplate}
-                    className="w-full cursor-pointer rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full min-h-[48px] rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Lag materialmal fra tilbud
                   </button>
@@ -1168,7 +1216,7 @@ export default async function OfferPage({
                 </p>
 
                 <form action={updateExistingTemplateFromOffer} className="mt-4 space-y-3">
-                  <input type="hidden" name="offerId" value={typedOffer.id} />
+                  <input type="hidden" name="offerId" value={typedOffer.id || ""} />
 
                   <div>
                     <label className="block text-sm font-medium text-amber-900">
@@ -1177,7 +1225,7 @@ export default async function OfferPage({
                     <select
                       name="templateId"
                       defaultValue=""
-                      className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-4 py-3"
+                      className="mt-2 min-h-[48px] w-full rounded-2xl border border-amber-200 bg-white px-4 py-3"
                       disabled={!canCreateTemplate || materialTemplates.length === 0}
                     >
                       <option value="">Velg eksisterende materialmal</option>
@@ -1195,7 +1243,7 @@ export default async function OfferPage({
                     </label>
 
                     <div className="mt-2 space-y-3 rounded-2xl bg-white p-4">
-                      <label className="flex cursor-pointer items-start gap-3 text-sm text-amber-900">
+                      <label className="flex items-start gap-3 text-sm text-amber-900">
                         <input
                           type="radio"
                           name="syncMode"
@@ -1213,7 +1261,7 @@ export default async function OfferPage({
                         </span>
                       </label>
 
-                      <label className="flex cursor-pointer items-start gap-3 text-sm text-amber-900">
+                      <label className="flex items-start gap-3 text-sm text-amber-900">
                         <input
                           type="radio"
                           name="syncMode"
@@ -1235,21 +1283,21 @@ export default async function OfferPage({
                   </div>
 
                   <div className="space-y-3 rounded-2xl bg-white p-4">
-                    <label className="flex cursor-pointer items-center gap-3 text-sm text-amber-900">
+                    <label className="flex items-start gap-3 text-sm text-amber-900">
                       <input
                         type="checkbox"
                         name="overwriteName"
-                        className="h-4 w-4"
+                        className="mt-1 h-4 w-4"
                         disabled={!canCreateTemplate || materialTemplates.length === 0}
                       />
                       <span>Oppdater også navn på malen fra tilbudstittelen</span>
                     </label>
 
-                    <label className="flex cursor-pointer items-center gap-3 text-sm text-amber-900">
+                    <label className="flex items-start gap-3 text-sm text-amber-900">
                       <input
                         type="checkbox"
                         name="overwriteDescription"
-                        className="h-4 w-4"
+                        className="mt-1 h-4 w-4"
                         disabled={!canCreateTemplate || materialTemplates.length === 0}
                       />
                       <span>Oppdater også beskrivelse på malen fra tilbudsteksten</span>
@@ -1259,7 +1307,7 @@ export default async function OfferPage({
                   <button
                     type="submit"
                     disabled={!canCreateTemplate || materialTemplates.length === 0}
-                    className="w-full cursor-pointer rounded-2xl bg-amber-500 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full min-h-[48px] rounded-2xl bg-amber-500 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Oppdater valgt materialmal
                   </button>
@@ -1275,7 +1323,7 @@ export default async function OfferPage({
               <div className="mt-5 rounded-2xl border border-neutral-200 bg-white p-4">
                 <p className="text-sm text-neutral-500">Kundelenke</p>
 
-                <p className="mt-2 break-all rounded-xl bg-neutral-100 px-3 py-2 text-sm">
+                <p className="mt-2 break-all rounded-xl bg-neutral-100 px-3 py-3 text-sm">
                   {publicUrl || "Mangler delingslenke"}
                 </p>
 
@@ -1284,12 +1332,12 @@ export default async function OfferPage({
                     <>
                       <Link
                         href={publicUrl}
-                        className="cursor-pointer rounded-2xl bg-black px-4 py-3 text-center text-sm font-medium text-white"
+                        className="inline-flex min-h-[48px] items-center justify-center rounded-2xl bg-black px-4 py-3 text-center text-sm font-medium text-white"
                       >
                         Åpne kundelenke
                       </Link>
 
-                      <CopyLinkButton url={publicUrl} offerId={typedOffer.id} />
+                      <CopyLinkButton url={publicUrl} offerId={typedOffer.id || ""} />
                     </>
                   ) : null}
                 </div>
@@ -1297,8 +1345,8 @@ export default async function OfferPage({
             </section>
           </div>
 
-          <section className="mt-8 rounded-2xl border border-neutral-200 p-5">
-            <div className="flex items-center justify-between">
+          <section className="mt-6 rounded-2xl border border-neutral-200 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-lg font-semibold">Materialer</p>
                 <p className="mt-1 text-sm text-neutral-500">
@@ -1306,7 +1354,7 @@ export default async function OfferPage({
                 </p>
               </div>
 
-              <div className="rounded-xl bg-neutral-100 px-3 py-2 text-sm font-medium">
+              <div className="inline-flex w-fit rounded-xl bg-neutral-100 px-3 py-2 text-sm font-medium">
                 {materials.length} linjer
               </div>
             </div>
@@ -1334,14 +1382,14 @@ export default async function OfferPage({
                             {item.material_name || "Materiale"}
                           </p>
 
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-500">
                             <span>{item.supplier || "Ukjent leverandør"}</span>
-                            <span>•</span>
+                            <span className="hidden sm:inline">•</span>
                             <span>{item.unit || "stk"}</span>
                           </div>
                         </div>
 
-                        <div className="grid gap-2 text-sm sm:grid-cols-3 lg:grid-cols-6">
+                        <div className="grid gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
                           <div className="rounded-xl bg-white p-3">
                             <p className="text-neutral-500">Antall</p>
                             <p className="mt-1 font-medium">
@@ -1392,7 +1440,7 @@ export default async function OfferPage({
             )}
           </section>
 
-          <section className="mt-8 rounded-2xl border border-green-200 bg-green-50 p-5">
+          <section className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-4 sm:p-5">
             <p className="text-lg font-semibold text-green-900">
               Intern materialøkonomi
             </p>
@@ -1424,7 +1472,7 @@ export default async function OfferPage({
             </div>
           </section>
 
-          <section className="mt-8 rounded-2xl bg-neutral-100 p-5">
+          <section className="mt-6 rounded-2xl bg-neutral-100 p-4 sm:p-5">
             <h2 className="text-lg font-semibold">Prisoppsummering</h2>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -1450,6 +1498,40 @@ export default async function OfferPage({
               </div>
             </div>
           </section>
+        </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+        <div className="mx-auto max-w-6xl">
+          <div className="grid grid-cols-2 gap-3">
+            {existingInvoiceId ? (
+              <Link
+                href={`/invoices/${existingInvoiceId}`}
+                className="inline-flex min-h-[52px] items-center justify-center rounded-2xl bg-green-600 px-4 py-4 text-center text-sm font-medium text-white"
+              >
+                Åpne faktura
+              </Link>
+            ) : (
+              <form action={createInvoiceFromOffer}>
+                <button
+                  type="submit"
+                  disabled={!canCreateInvoice}
+                  className="w-full min-h-[52px] rounded-2xl bg-green-600 px-4 py-4 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Lag faktura
+                </button>
+              </form>
+            )}
+
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-[52px] items-center justify-center rounded-2xl bg-black px-4 py-4 text-center text-sm font-medium text-white"
+            >
+              Åpne PDF
+            </a>
+          </div>
         </div>
       </div>
     </main>

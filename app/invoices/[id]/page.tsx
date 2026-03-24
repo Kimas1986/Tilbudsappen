@@ -633,21 +633,21 @@ export default async function InvoicePage({
 
   return (
     <main className="min-h-screen bg-neutral-50 text-neutral-900">
-      <div className="mx-auto max-w-7xl px-6 py-12">
-        <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-black/5">
-          <div className="flex flex-col gap-4 border-b border-neutral-200 pb-8 lg:flex-row lg:items-start lg:justify-between">
+      <div className="mx-auto max-w-7xl px-4 py-4 pb-28 sm:px-6 sm:py-6 sm:pb-32 lg:px-8 lg:py-8 lg:pb-10">
+        <div className="rounded-[28px] bg-white p-4 shadow-sm ring-1 ring-black/5 sm:p-6 lg:p-8">
+          <div className="flex flex-col gap-4 border-b border-neutral-200 pb-6 sm:pb-8 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-sm font-medium text-neutral-500">Faktura</p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">
+              <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
                 {typedInvoice.title || "Faktura"}
               </h1>
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
+              <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-500">
                 <span>Opprettet {formatDateTime(typedInvoice.created_at)}</span>
-                <span>•</span>
+                <span className="hidden sm:inline">•</span>
                 <span>Forfall {formatDate(typedInvoice.due_date)}</span>
                 {typedInvoice.invoice_number ? (
                   <>
-                    <span>•</span>
+                    <span className="hidden sm:inline">•</span>
                     <span>Nr. {typedInvoice.invoice_number}</span>
                   </>
                 ) : null}
@@ -663,10 +663,10 @@ export default async function InvoicePage({
                 {getInvoiceStatusLabel(typedInvoice.status)}
               </span>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:w-auto">
                 <a
                   href="/dashboard"
-                  className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
+                  className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-neutral-300 px-4 py-3 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
                 >
                   Dashboard
                 </a>
@@ -674,9 +674,9 @@ export default async function InvoicePage({
                 {typedInvoice.offer_id ? (
                   <a
                     href={`/offers/${typedInvoice.offer_id}`}
-                    className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
+                    className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-neutral-300 px-4 py-3 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
                   >
-                    Tilbake til tilbud
+                    Tilbud
                   </a>
                 ) : null}
 
@@ -684,7 +684,7 @@ export default async function InvoicePage({
                   href={`/api/invoices/${typedInvoice.id}/pdf`}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-2xl border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900"
+                  className="inline-flex min-h-[44px] items-center justify-center rounded-2xl border border-neutral-300 px-4 py-3 text-sm font-medium text-neutral-900 transition hover:bg-neutral-50"
                 >
                   Åpne PDF
                 </a>
@@ -704,9 +704,9 @@ export default async function InvoicePage({
             </div>
           ) : null}
 
-          <section className="mt-8 rounded-3xl border border-neutral-200 bg-neutral-50 p-6">
-            <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
+          <section className="mt-6 rounded-3xl border border-neutral-200 bg-neutral-50 p-4 sm:p-6">
+            <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr] lg:gap-6">
+              <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                   Fra
                 </p>
@@ -721,7 +721,7 @@ export default async function InvoicePage({
                   ))}
 
                   {typedSettings?.company_email ? (
-                    <p>E-post: {typedSettings.company_email}</p>
+                    <p className="break-words">E-post: {typedSettings.company_email}</p>
                   ) : null}
 
                   {typedSettings?.contact_name ? (
@@ -740,12 +740,12 @@ export default async function InvoicePage({
                     <p>Konto: {formatBankAccount(typedSettings.bank_account)}</p>
                   ) : null}
 
-                  {typedSettings?.iban ? <p>IBAN: {typedSettings.iban}</p> : null}
+                  {typedSettings?.iban ? <p className="break-all">IBAN: {typedSettings.iban}</p> : null}
                   {typedSettings?.bic ? <p>BIC: {typedSettings.bic}</p> : null}
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
+              <div className="rounded-2xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                   Til
                 </p>
@@ -754,8 +754,8 @@ export default async function InvoicePage({
                   <p className="text-lg font-semibold text-neutral-900">
                     {customer.name}
                   </p>
-                  <p>E-post: {customer.email || "-"}</p>
-                  <p>Telefon: {customer.phone || "-"}</p>
+                  <p className="break-words">E-post: {customer.email || "-"}</p>
+                  <p className="break-words">Telefon: {customer.phone || "-"}</p>
                 </div>
 
                 <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -781,27 +781,27 @@ export default async function InvoicePage({
             </div>
           </section>
 
-          <div className="mt-8 grid gap-4 lg:grid-cols-4">
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
               <p className="text-sm text-neutral-500">Kunde</p>
-              <p className="mt-2 text-lg font-bold">{customer.name}</p>
+              <p className="mt-2 text-lg font-bold break-words">{customer.name}</p>
             </div>
 
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+            <div className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
               <p className="text-sm text-neutral-500">Subtotal</p>
               <p className="mt-2 text-lg font-bold">
                 {formatCurrency(typedInvoice.subtotal)} kr
               </p>
             </div>
 
-            <div className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+            <div className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
               <p className="text-sm text-neutral-500">MVA</p>
               <p className="mt-2 text-lg font-bold">
                 {formatCurrency(typedInvoice.vat_amount)} kr
               </p>
             </div>
 
-            <div className="rounded-2xl bg-green-50 p-5 ring-1 ring-green-100">
+            <div className="rounded-2xl bg-green-50 p-4 ring-1 ring-green-100 sm:p-5">
               <p className="text-sm text-green-800">Totalt</p>
               <p className="mt-2 text-2xl font-bold text-green-900">
                 {formatCurrency(typedInvoice.total)} kr
@@ -809,10 +809,10 @@ export default async function InvoicePage({
             </div>
           </div>
 
-          <div className="mt-8 grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-            <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+          <div className="mt-6 grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:gap-6">
+            <section className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
               <h2 className="text-lg font-semibold">Fakturahode</h2>
-              <p className="mt-2 text-sm text-neutral-600">
+              <p className="mt-2 text-sm leading-6 text-neutral-600">
                 Her kan du justere tittelen, beskrivelsen og forfallsdatoen før
                 sending.
               </p>
@@ -825,7 +825,7 @@ export default async function InvoicePage({
                   <input
                     name="title"
                     defaultValue={typedInvoice.title || ""}
-                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                    className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base"
                     placeholder="F.eks. Faktura - bad renovering"
                   />
                 </div>
@@ -838,7 +838,7 @@ export default async function InvoicePage({
                     name="description"
                     rows={6}
                     defaultValue={typedInvoice.description || ""}
-                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base"
                     placeholder="F.eks. Tilleggsarbeid utført etter avtale med kunde..."
                   />
                 </div>
@@ -851,13 +851,13 @@ export default async function InvoicePage({
                     type="date"
                     name="due_date"
                     defaultValue={toDateInputValue(typedInvoice.due_date)}
-                    className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                    className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white"
+                  className="hidden w-full min-h-[48px] rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white lg:block"
                 >
                   Lagre fakturahode
                 </button>
@@ -871,9 +871,9 @@ export default async function InvoicePage({
               ) : null}
             </section>
 
-            <section className="rounded-2xl bg-neutral-50 p-5 ring-1 ring-black/5">
+            <section className="rounded-2xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5 lg:sticky lg:top-6">
               <h2 className="text-lg font-semibold">Handlinger</h2>
-              <p className="mt-2 text-sm text-neutral-600">
+              <p className="mt-2 text-sm leading-6 text-neutral-600">
                 Rediger fakturaen ferdig først, og send den deretter til kunden.
               </p>
 
@@ -882,7 +882,7 @@ export default async function InvoicePage({
                   <button
                     type="submit"
                     disabled={!hasCustomerEmail}
-                    className="w-full rounded-2xl bg-blue-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full min-h-[48px] rounded-2xl bg-blue-600 px-4 py-3 text-center text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Send faktura på e-post
                   </button>
@@ -892,7 +892,7 @@ export default async function InvoicePage({
                   href={`/api/invoices/${typedInvoice.id}/pdf`}
                   target="_blank"
                   rel="noreferrer"
-                  className="w-full rounded-2xl bg-black px-4 py-3 text-center text-sm font-medium text-white"
+                  className="inline-flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-black px-4 py-3 text-center text-sm font-medium text-white"
                 >
                   Åpne PDF
                 </a>
@@ -900,7 +900,7 @@ export default async function InvoicePage({
                 <form action={markInvoiceSent}>
                   <button
                     type="submit"
-                    className="w-full rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white"
+                    className="w-full min-h-[48px] rounded-2xl bg-neutral-900 px-4 py-3 text-center text-sm font-medium text-white"
                   >
                     Marker som sendt
                   </button>
@@ -909,7 +909,7 @@ export default async function InvoicePage({
                 <form action={markInvoicePaid}>
                   <button
                     type="submit"
-                    className="w-full rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white"
+                    className="w-full min-h-[48px] rounded-2xl bg-green-600 px-4 py-3 text-center text-sm font-medium text-white"
                   >
                     Marker som betalt
                   </button>
@@ -917,7 +917,7 @@ export default async function InvoicePage({
 
                 <a
                   href="/economy"
-                  className="rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
+                  className="inline-flex min-h-[48px] items-center justify-center rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-center text-sm font-medium text-neutral-900"
                 >
                   Åpne økonomi
                 </a>
@@ -948,8 +948,8 @@ export default async function InvoicePage({
             </section>
           </div>
 
-          <section className="mt-8 rounded-2xl border border-neutral-200 p-5">
-            <div className="flex items-center justify-between">
+          <section className="mt-6 rounded-2xl border border-neutral-200 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-lg font-semibold">Fakturalinjer</p>
                 <p className="mt-1 text-sm text-neutral-500">
@@ -958,7 +958,7 @@ export default async function InvoicePage({
                 </p>
               </div>
 
-              <div className="rounded-xl bg-neutral-100 px-3 py-2 text-sm font-medium">
+              <div className="inline-flex w-fit rounded-xl bg-neutral-100 px-3 py-2 text-sm font-medium">
                 {typedLines.length} linjer
               </div>
             </div>
@@ -985,7 +985,7 @@ export default async function InvoicePage({
                           <input
                             name="title"
                             defaultValue={line.title}
-                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                            className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base"
                             placeholder="F.eks. Ekstra materialer"
                           />
                         </div>
@@ -997,7 +997,7 @@ export default async function InvoicePage({
                           <input
                             name="description"
                             defaultValue={line.description || ""}
-                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                            className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base"
                             placeholder="F.eks. Ekstraarbeid etter avtale"
                           />
                         </div>
@@ -1013,7 +1013,7 @@ export default async function InvoicePage({
                             step="0.01"
                             name="quantity"
                             defaultValue={line.quantity ?? 1}
-                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                            className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base"
                           />
                         </div>
 
@@ -1024,7 +1024,7 @@ export default async function InvoicePage({
                           <input
                             name="unit"
                             defaultValue={line.unit || ""}
-                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                            className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base"
                             placeholder="stk"
                           />
                         </div>
@@ -1038,7 +1038,7 @@ export default async function InvoicePage({
                             step="0.01"
                             name="unit_price"
                             defaultValue={line.unit_price ?? 0}
-                            className="mt-2 w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3"
+                            className="mt-2 min-h-[48px] w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base"
                           />
                         </div>
 
@@ -1056,7 +1056,7 @@ export default async function InvoicePage({
                       <div className="flex flex-col gap-3 sm:flex-row">
                         <button
                           type="submit"
-                          className="rounded-2xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white"
+                          className="min-h-[48px] rounded-2xl bg-neutral-900 px-4 py-3 text-sm font-medium text-white"
                         >
                           Lagre linje
                         </button>
@@ -1067,7 +1067,7 @@ export default async function InvoicePage({
                       <input type="hidden" name="line_id" value={line.id} />
                       <button
                         type="submit"
-                        className="rounded-2xl border border-red-300 bg-white px-4 py-3 text-sm font-medium text-red-700"
+                        className="min-h-[44px] rounded-2xl border border-red-300 bg-white px-4 py-3 text-sm font-medium text-red-700"
                       >
                         Slett linje
                       </button>
@@ -1078,7 +1078,7 @@ export default async function InvoicePage({
             )}
           </section>
 
-          <section className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+          <section className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
             <h2 className="text-lg font-semibold text-emerald-900">Legg til ny linje</h2>
             <p className="mt-1 text-sm text-emerald-800">
               Bruk denne for tilleggsarbeid, ekstra materialer eller fratrekk.
@@ -1092,7 +1092,7 @@ export default async function InvoicePage({
                   </label>
                   <input
                     name="title"
-                    className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                    className="mt-2 min-h-[48px] w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-base"
                     placeholder="F.eks. Tilleggsarbeid"
                   />
                 </div>
@@ -1103,7 +1103,7 @@ export default async function InvoicePage({
                   </label>
                   <input
                     name="description"
-                    className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                    className="mt-2 min-h-[48px] w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-base"
                     placeholder="F.eks. Utført etter avtale med kunde"
                   />
                 </div>
@@ -1119,7 +1119,7 @@ export default async function InvoicePage({
                     step="0.01"
                     name="quantity"
                     defaultValue={1}
-                    className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                    className="mt-2 min-h-[48px] w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-base"
                   />
                 </div>
 
@@ -1130,7 +1130,7 @@ export default async function InvoicePage({
                   <input
                     name="unit"
                     defaultValue="stk"
-                    className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                    className="mt-2 min-h-[48px] w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-base"
                   />
                 </div>
 
@@ -1143,7 +1143,7 @@ export default async function InvoicePage({
                     step="0.01"
                     name="unit_price"
                     defaultValue={0}
-                    className="mt-2 w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3"
+                    className="mt-2 min-h-[48px] w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-base"
                   />
                 </div>
 
@@ -1157,14 +1157,14 @@ export default async function InvoicePage({
 
               <button
                 type="submit"
-                className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white"
+                className="w-full min-h-[48px] rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-medium text-white"
               >
                 Legg til fakturalinje
               </button>
             </form>
           </section>
 
-          <section className="mt-8 rounded-2xl bg-neutral-100 p-5">
+          <section className="mt-6 rounded-2xl bg-neutral-100 p-4 sm:p-5">
             <h2 className="text-lg font-semibold">Prisoppsummering</h2>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -1190,6 +1190,56 @@ export default async function InvoicePage({
               </div>
             </div>
           </section>
+        </div>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-3 flex items-center justify-between gap-4 rounded-2xl bg-neutral-100 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-xs text-neutral-500">Totalt</p>
+              <p className="truncate text-lg font-bold">
+                {formatCurrency(typedInvoice.total)} kr
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-neutral-500">Status</p>
+              <p className="text-sm font-medium">
+                {getInvoiceStatusLabel(typedInvoice.status)}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <form action={updateInvoiceHeader}>
+              <input type="hidden" name="title" value={typedInvoice.title || ""} />
+              <input
+                type="hidden"
+                name="description"
+                value={typedInvoice.description || ""}
+              />
+              <input
+                type="hidden"
+                name="due_date"
+                value={toDateInputValue(typedInvoice.due_date)}
+              />
+              <button
+                type="submit"
+                className="w-full min-h-[52px] rounded-2xl bg-neutral-900 px-4 py-4 text-sm font-medium text-white"
+              >
+                Lagre hode
+              </button>
+            </form>
+
+            <a
+              href={`/api/invoices/${typedInvoice.id}/pdf`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-[52px] items-center justify-center rounded-2xl bg-black px-4 py-4 text-center text-sm font-medium text-white"
+            >
+              Åpne PDF
+            </a>
+          </div>
         </div>
       </div>
     </main>
