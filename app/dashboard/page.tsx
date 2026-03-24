@@ -144,6 +144,39 @@ function sumInvoiceValues(
   }, 0);
 }
 
+function StatCard({
+  label,
+  value,
+  subtext,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  subtext: string;
+  tone?: "neutral" | "blue" | "green" | "yellow" | "orange" | "red";
+}) {
+  const toneClasses =
+    tone === "blue"
+      ? "text-blue-700"
+      : tone === "green"
+      ? "text-green-700"
+      : tone === "yellow"
+      ? "text-yellow-700"
+      : tone === "orange"
+      ? "text-orange-700"
+      : tone === "red"
+      ? "text-red-700"
+      : "text-neutral-900";
+
+  return (
+    <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <p className="text-sm text-neutral-500">{label}</p>
+      <p className={`mt-2 text-2xl font-bold ${toneClasses}`}>{value}</p>
+      <p className="mt-2 text-sm text-neutral-500">{subtext}</p>
+    </div>
+  );
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient();
 
@@ -307,85 +340,75 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl bg-yellow-50 p-4 ring-1 ring-yellow-100 sm:p-5">
-              <p className="text-sm text-yellow-800">Utkast</p>
-              <p className="mt-2 text-2xl font-bold text-yellow-900">
-                {draftCount}
-              </p>
-              <p className="mt-2 text-sm text-yellow-900/80">
-                {formatCurrency(totalDraftValue)} kr i utkast
+          <div className="mt-8 rounded-3xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold">Tilbud</h2>
+              <p className="mt-1 text-sm text-neutral-500">
+                Oversikt over tilbud som ligger som utkast, sendt, godkjent og utløpt.
               </p>
             </div>
 
-            <div className="rounded-2xl bg-blue-50 p-4 ring-1 ring-blue-100 sm:p-5">
-              <p className="text-sm text-blue-800">Sendt</p>
-              <p className="mt-2 text-2xl font-bold text-blue-900">
-                {sentCount}
-              </p>
-              <p className="mt-2 text-sm text-blue-900/80">
-                {formatCurrency(totalSentValue)} kr ute hos kunder
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-green-50 p-4 ring-1 ring-green-100 sm:p-5">
-              <p className="text-sm text-green-800">Godkjent</p>
-              <p className="mt-2 text-2xl font-bold text-green-900">
-                {approvedCount}
-              </p>
-              <p className="mt-2 text-sm text-green-900/80">
-                {formatCurrency(totalApprovedValue)} kr godkjent
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-red-50 p-4 ring-1 ring-red-100 sm:p-5">
-              <p className="text-sm text-red-800">Utløpt</p>
-              <p className="mt-2 text-2xl font-bold text-red-900">
-                {expiredCount}
-              </p>
-              <p className="mt-2 text-sm text-red-900/80">Trenger oppfølging</p>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label="Utkast"
+                value={String(draftCount)}
+                subtext={`${formatCurrency(totalDraftValue)} kr i utkast`}
+                tone="yellow"
+              />
+              <StatCard
+                label="Sendt"
+                value={String(sentCount)}
+                subtext={`${formatCurrency(totalSentValue)} kr ute hos kunder`}
+                tone="blue"
+              />
+              <StatCard
+                label="Godkjent"
+                value={String(approvedCount)}
+                subtext={`${formatCurrency(totalApprovedValue)} kr godkjent`}
+                tone="green"
+              />
+              <StatCard
+                label="Utløpt"
+                value={String(expiredCount)}
+                subtext="Trenger oppfølging"
+                tone="red"
+              />
             </div>
           </div>
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl bg-neutral-100 p-4 ring-1 ring-black/5 sm:p-5">
-              <p className="text-sm text-neutral-500">Totalt fakturert</p>
-              <p className="mt-2 text-2xl font-bold text-neutral-900">
-                {formatCurrency(paidInvoiceValue)} kr
-              </p>
-              <p className="mt-2 text-sm text-neutral-600">
-                {paidInvoiceCount} betalte fakturaer
+          <div className="mt-4 rounded-3xl bg-neutral-50 p-4 ring-1 ring-black/5 sm:p-5">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold">Faktura</h2>
+              <p className="mt-1 text-sm text-neutral-500">
+                Oversikt over betalt, utestående og forfalt.
               </p>
             </div>
 
-            <div className="rounded-2xl bg-blue-50 p-4 ring-1 ring-blue-100 sm:p-5">
-              <p className="text-sm text-blue-800">Utestående fakturaer</p>
-              <p className="mt-2 text-2xl font-bold text-blue-900">
-                {formatCurrency(sentInvoiceValue)} kr
-              </p>
-              <p className="mt-2 text-sm text-blue-900/80">
-                Sendt, men ikke betalt
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-orange-50 p-4 ring-1 ring-orange-100 sm:p-5">
-              <p className="text-sm text-orange-800">Forfalt</p>
-              <p className="mt-2 text-2xl font-bold text-orange-900">
-                {formatCurrency(overdueInvoiceValue)} kr
-              </p>
-              <p className="mt-2 text-sm text-orange-900/80">
-                {overdueInvoiceCount} forfalte fakturaer
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-neutral-100 p-4 ring-1 ring-black/5 sm:p-5">
-              <p className="text-sm text-neutral-500">Fakturamodul</p>
-              <p className="mt-2 text-2xl font-bold text-neutral-900">
-                {typedInvoices.length}
-              </p>
-              <p className="mt-2 text-sm text-neutral-600">
-                Totalt opprettede fakturaer
-              </p>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label="Totalt fakturert"
+                value={`${formatCurrency(paidInvoiceValue)} kr`}
+                subtext={`${paidInvoiceCount} betalte fakturaer`}
+                tone="green"
+              />
+              <StatCard
+                label="Utestående"
+                value={`${formatCurrency(sentInvoiceValue)} kr`}
+                subtext="Sendt, men ikke betalt"
+                tone="blue"
+              />
+              <StatCard
+                label="Forfalt"
+                value={`${formatCurrency(overdueInvoiceValue)} kr`}
+                subtext={`${overdueInvoiceCount} forfalte fakturaer`}
+                tone="orange"
+              />
+              <StatCard
+                label="Fakturamodul"
+                value={String(typedInvoices.length)}
+                subtext="Totalt opprettede fakturaer"
+                tone="neutral"
+              />
             </div>
           </div>
 
