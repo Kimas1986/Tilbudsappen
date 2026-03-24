@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPushToSubscriptions } from "@/lib/push/send";
 
 type PublicOffer = {
@@ -25,6 +26,7 @@ type CompanySettings = {
 };
 
 type PushSubscriptionRow = {
+  id?: string;
   endpoint: string;
   p256dh: string | null;
   auth: string | null;
@@ -114,6 +116,7 @@ export default async function PublicOfferPage({
     "use server";
 
     const supabase = await createClient();
+    const admin = createAdminClient();
 
     const { data: currentOffer, error } = await supabase
       .from("offers")
@@ -122,6 +125,7 @@ export default async function PublicOfferPage({
       .single();
 
     if (error || !currentOffer) {
+      console.error("approveOffer: fant ikke tilbud:", error);
       redirect(`/t/${token}`);
     }
 
@@ -146,33 +150,71 @@ export default async function PublicOfferPage({
       .eq("id", typedOffer.id);
 
     if (updateError) {
+      console.error("approveOffer: kunne ikke oppdatere tilbud:", updateError);
       redirect(`/t/${token}`);
     }
 
     try {
-      const { data: subscriptions, error: subscriptionsError } = await supabase
+      const { data: subscriptions, error: subscriptionsError } = await admin
         .from("push_subscriptions")
-        .select("endpoint, p256dh, auth")
+        .select("id, endpoint, p256dh, auth")
         .eq("user_id", currentOffer.user_id);
 
       if (subscriptionsError) {
-        console.error("Feil ved henting av push subscriptions:", subscriptionsError);
+        console.error(
+          "approveOffer: feil ved henting av push subscriptions:",
+          subscriptionsError
+        );
       } else {
         const validSubscriptions = ((subscriptions as PushSubscriptionRow[] | null) || [])
           .filter((item) => item.endpoint && item.p256dh && item.auth);
 
+        console.log(
+          "approveOffer: antall subscriptions funnet:",
+          validSubscriptions.length
+        );
+
         if (validSubscriptions.length > 0) {
-          await sendPushToSubscriptions(validSubscriptions, {
+          const results = await sendPushToSubscriptions(validSubscriptions, {
             title: "Tilbud godkjent",
             body: `${
               String(currentOffer.title || "").trim() || "Et tilbud"
-            } er godkjent${currentOffer.total ? ` • ${formatCurrency(currentOffer.total)} kr` : ""}.`,
+            } er godkjent${
+              currentOffer.total ? ` • ${formatCurrency(currentOffer.total)} kr` : ""
+            }.`,
             url: `/offers/${currentOffer.id}`,
           });
+
+          console.log("approveOffer: push results:", results);
+
+          const rejectedEndpoints = results
+            .map((result, index) => {
+              if (result.status === "rejected") {
+                return validSubscriptions[index]?.endpoint || null;
+              }
+              return null;
+            })
+            .filter(Boolean) as string[];
+
+          if (rejectedEndpoints.length > 0) {
+            const { error: deleteBadSubsError } = await admin
+              .from("push_subscriptions")
+              .delete()
+              .in("endpoint", rejectedEndpoints);
+
+            if (deleteBadSubsError) {
+              console.error(
+                "approveOffer: kunne ikke slette ugyldige subscriptions:",
+                deleteBadSubsError
+              );
+            }
+          }
+        } else {
+          console.log("approveOffer: ingen gyldige subscriptions å sende til.");
         }
       }
     } catch (pushError) {
-      console.error("Feil ved sending av push:", pushError);
+      console.error("approveOffer: feil ved sending av push:", pushError);
     }
 
     redirect(`/t/${token}?success=approved`);
