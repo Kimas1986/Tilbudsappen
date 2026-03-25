@@ -50,6 +50,10 @@ type SelectedMaterial = {
   lineTotal: number;
 };
 
+const MATERIAL_FAVORITES_KEY = "tilbudsapp-material-favorites";
+const MATERIAL_RECENTS_KEY = "tilbudsapp-material-recents";
+const MAX_RECENT_MATERIALS = 12;
+
 function parseNumber(value: string) {
   const normalized = value.replace(",", ".").trim();
   const parsed = Number(normalized);
@@ -83,6 +87,19 @@ function formatSuggestionSummary(suggestion: AiSuggestion) {
   }
 
   return `${formatCurrency(suggestion.fixedPrice)} kr fastpris + ${formatCurrency(suggestion.materials)} kr materialer`;
+}
+
+function normalizeText(value: string | null | undefined) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function materialDisplayName(material: MaterialRow) {
+  return material.supplier
+    ? `${material.name} (${material.supplier})`
+    : material.name;
 }
 
 const QUICK_INPUTS = [
@@ -129,6 +146,10 @@ export default function NewOfferPage() {
   const [useSavedMaterials, setUseSavedMaterials] = useState(true);
   const [templateMessage, setTemplateMessage] = useState("");
 
+  const [materialSearch, setMaterialSearch] = useState("");
+  const [favoriteMaterialIds, setFavoriteMaterialIds] = useState<string[]>([]);
+  const [recentMaterialIds, setRecentMaterialIds] = useState<string[]>([]);
+
   useEffect(() => {
     let active = true;
 
@@ -172,6 +193,52 @@ export default function NewOfferPage() {
     };
   }, []);
 
+  useEffect(() => {
+    try {
+      const rawFavorites = window.localStorage.getItem(MATERIAL_FAVORITES_KEY);
+      const rawRecents = window.localStorage.getItem(MATERIAL_RECENTS_KEY);
+
+      const parsedFavorites = rawFavorites ? JSON.parse(rawFavorites) : [];
+      const parsedRecents = rawRecents ? JSON.parse(rawRecents) : [];
+
+      setFavoriteMaterialIds(
+        Array.isArray(parsedFavorites)
+          ? parsedFavorites.filter((value): value is string => typeof value === "string")
+          : []
+      );
+
+      setRecentMaterialIds(
+        Array.isArray(parsedRecents)
+          ? parsedRecents.filter((value): value is string => typeof value === "string")
+          : []
+      );
+    } catch (error) {
+      console.error("Kunne ikke lese lagrede materialfavoritter/siste brukte:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        MATERIAL_FAVORITES_KEY,
+        JSON.stringify(favoriteMaterialIds)
+      );
+    } catch (error) {
+      console.error("Kunne ikke lagre materialfavoritter:", error);
+    }
+  }, [favoriteMaterialIds]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        MATERIAL_RECENTS_KEY,
+        JSON.stringify(recentMaterialIds)
+      );
+    } catch (error) {
+      console.error("Kunne ikke lagre sist brukte materialer:", error);
+    }
+  }, [recentMaterialIds]);
+
   const selectedTemplate = useMemo(() => {
     return materialTemplates.find((template) => template.id === selectedTemplateId) || null;
   }, [materialTemplates, selectedTemplateId]);
@@ -204,6 +271,81 @@ export default function NewOfferPage() {
   }, [priceType, fixedPrice, hourlyRate, hours, materials, vatEnabled]);
 
   const selectedMaterialsCount = selectedMaterials.length;
+
+  const favoriteMaterials = useMemo(() => {
+    if (favoriteMaterialIds.length === 0) return [];
+
+    const favoriteSet = new Set(favoriteMaterialIds);
+
+    return materialsCatalog
+      .filter((material) => favoriteSet.has(material.id))
+      .sort((a, b) => {
+        return favoriteMaterialIds.indexOf(a.id) - favoriteMaterialIds.indexOf(b.id);
+      });
+  }, [materialsCatalog, favoriteMaterialIds]);
+
+  const recentMaterials = useMemo(() => {
+    if (recentMaterialIds.length === 0) return [];
+
+    const materialsById = new Map(materialsCatalog.map((material) => [material.id, material]));
+
+    return recentMaterialIds
+      .map((id) => materialsById.get(id))
+      .filter((material): material is MaterialRow => Boolean(material));
+  }, [materialsCatalog, recentMaterialIds]);
+
+  const filteredMaterials = useMemo(() => {
+    const query = normalizeText(materialSearch);
+
+    const filtered = query
+      ? materialsCatalog.filter((material) => {
+          const haystack = normalizeText(
+            `${material.name} ${material.supplier || ""} ${material.unit || ""}`
+          );
+          return haystack.includes(query);
+        })
+      : materialsCatalog;
+
+    const favoritesSet = new Set(favoriteMaterialIds);
+    const recentsSet = new Set(recentMaterialIds);
+    const selectedSet = new Set(selectedMaterials.map((item) => item.materialId));
+
+    return [...filtered].sort((a, b) => {
+      const aSelected = selectedSet.has(a.id) ? 1 : 0;
+      const bSelected = selectedSet.has(b.id) ? 1 : 0;
+      if (aSelected !== bSelected) return aSelected - bSelected;
+
+      const aFavorite = favoritesSet.has(a.id) ? 1 : 0;
+      const bFavorite = favoritesSet.has(b.id) ? 1 : 0;
+      if (aFavorite !== bFavorite) return bFavorite - aFavorite;
+
+      const aRecent = recentsSet.has(a.id) ? 1 : 0;
+      const bRecent = recentsSet.has(b.id) ? 1 : 0;
+      if (aRecent !== bRecent) return bRecent - aRecent;
+
+      return a.name.localeCompare(b.name, "no");
+    });
+  }, [materialsCatalog, materialSearch, favoriteMaterialIds, recentMaterialIds, selectedMaterials]);
+
+  const selectedMaterialDetails = useMemo(() => {
+    return materialsCatalog.find((item) => item.id === selectedMaterialId) || null;
+  }, [materialsCatalog, selectedMaterialId]);
+
+  function markMaterialAsRecent(materialId: string) {
+    setRecentMaterialIds((prev) => {
+      const next = [materialId, ...prev.filter((id) => id !== materialId)];
+      return next.slice(0, MAX_RECENT_MATERIALS);
+    });
+  }
+
+  function toggleFavoriteMaterial(materialId: string) {
+    setFavoriteMaterialIds((prev) => {
+      if (prev.includes(materialId)) {
+        return prev.filter((id) => id !== materialId);
+      }
+      return [materialId, ...prev];
+    });
+  }
 
   function applyAiSuggestion(suggestion: AiSuggestion) {
     setTitle(suggestion.title);
@@ -332,8 +474,27 @@ export default function NewOfferPage() {
     }
 
     setSelectedMaterials((prev) => [...prev, buildSelectedMaterial(material, "1")]);
-
+    markMaterialAsRecent(material.id);
     setSelectedMaterialId("");
+    setMaterialSearch("");
+    setUseSavedMaterials(true);
+    setTemplateMessage("");
+  }
+
+  function handleQuickAddMaterial(material: MaterialRow) {
+    const alreadyExists = selectedMaterials.some(
+      (item) => item.materialId === material.id
+    );
+
+    if (alreadyExists) {
+      setSelectedMaterialId(material.id);
+      return;
+    }
+
+    setSelectedMaterials((prev) => [...prev, buildSelectedMaterial(material, "1")]);
+    markMaterialAsRecent(material.id);
+    setSelectedMaterialId("");
+    setMaterialSearch("");
     setUseSavedMaterials(true);
     setTemplateMessage("");
   }
@@ -376,6 +537,7 @@ export default function NewOfferPage() {
         next.push(
           buildSelectedMaterial(material, String(templateItem.quantity || 1))
         );
+        markMaterialAsRecent(material.id);
         addedCount += 1;
       }
 
@@ -547,7 +709,7 @@ export default function NewOfferPage() {
 
             <div className="rounded-2xl bg-white/10 px-4 py-3 text-sm">
               <p className="text-white/70">Status</p>
-              <p className="mt-1 font-medium break-words">
+              <p className="mt-1 break-words font-medium">
                 {lastAppliedAiInput
                   ? `Sist generert fra: "${lastAppliedAiInput}"`
                   : "Ingen AI-forslag brukt enda"}
@@ -769,8 +931,8 @@ export default function NewOfferPage() {
               <div className="mb-4">
                 <h2 className="text-lg font-semibold">Materialer</h2>
                 <p className="mt-1 text-sm text-neutral-500">
-                  Velg fra materialdatabasen, eller bruk ferdige materialmaler
-                  for å fylle inn flere linjer med ett klikk.
+                  Velg fra materialdatabasen, bruk favoritter og sist brukte,
+                  eller legg inn ferdige materialmaler.
                 </p>
               </div>
 
@@ -840,34 +1002,222 @@ export default function NewOfferPage() {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
-                <select
-                  value={selectedMaterialId}
-                  onChange={(e) => setSelectedMaterialId(e.target.value)}
-                  className="min-h-[48px] rounded-2xl border border-neutral-300 px-4 py-3 text-base"
-                  disabled={materialsLoading}
-                >
-                  <option value="">
-                    {materialsLoading
-                      ? "Laster materialer..."
-                      : "Velg materiale fra databasen"}
-                  </option>
+              <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <label className="block text-sm font-medium">
+                      Materialvalg
+                    </label>
+                    <p className="mt-1 text-sm text-neutral-500">
+                      Søk, bruk favoritter eller plukk fra sist brukte.
+                    </p>
+                  </div>
 
-                  {materialsCatalog.map((material) => (
-                    <option key={material.id} value={material.id}>
-                      {material.name}
-                      {material.supplier ? ` (${material.supplier})` : ""}
-                    </option>
-                  ))}
-                </select>
+                  <input
+                    type="text"
+                    value={materialSearch}
+                    onChange={(e) => setMaterialSearch(e.target.value)}
+                    placeholder="Søk etter navn eller leverandør"
+                    className="min-h-[48px] rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base outline-none focus:border-black"
+                    disabled={materialsLoading}
+                  />
 
-                <button
-                  type="button"
-                  onClick={handleAddMaterial}
-                  className="min-h-[48px] rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white"
-                >
-                  Legg til
-                </button>
+                  {favoriteMaterials.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                        Favoritter
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {favoriteMaterials.slice(0, 10).map((material) => {
+                          const alreadySelected = selectedMaterials.some(
+                            (item) => item.materialId === material.id
+                          );
+
+                          return (
+                            <button
+                              key={material.id}
+                              type="button"
+                              onClick={() => handleQuickAddMaterial(material)}
+                              disabled={alreadySelected}
+                              className="min-h-[40px] rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 disabled:opacity-50"
+                            >
+                              ★ {materialDisplayName(material)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {recentMaterials.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                        Sist brukte
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {recentMaterials.slice(0, 10).map((material) => {
+                          const alreadySelected = selectedMaterials.some(
+                            (item) => item.materialId === material.id
+                          );
+
+                          return (
+                            <button
+                              key={material.id}
+                              type="button"
+                              onClick={() => handleQuickAddMaterial(material)}
+                              disabled={alreadySelected}
+                              className="min-h-[40px] rounded-full border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 disabled:opacity-50"
+                            >
+                              {materialDisplayName(material)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+                    <div className="space-y-3">
+                      <select
+                        value={selectedMaterialId}
+                        onChange={(e) => setSelectedMaterialId(e.target.value)}
+                        className="min-h-[48px] w-full rounded-2xl border border-neutral-300 bg-white px-4 py-3 text-base"
+                        disabled={materialsLoading}
+                      >
+                        <option value="">
+                          {materialsLoading
+                            ? "Laster materialer..."
+                            : filteredMaterials.length === 0
+                            ? "Ingen materialer matcher søket"
+                            : "Velg materiale fra databasen"}
+                        </option>
+
+                        {filteredMaterials.map((material) => {
+                          const isFavorite = favoriteMaterialIds.includes(material.id);
+                          const isRecent = recentMaterialIds.includes(material.id);
+
+                          return (
+                            <option key={material.id} value={material.id}>
+                              {isFavorite ? "★ " : ""}
+                              {isRecent && !isFavorite ? "• " : ""}
+                              {material.name}
+                              {material.supplier ? ` (${material.supplier})` : ""}
+                            </option>
+                          );
+                        })}
+                      </select>
+
+                      <div className="max-h-72 overflow-y-auto rounded-2xl border border-neutral-200 bg-white">
+                        {materialsLoading ? (
+                          <div className="px-4 py-4 text-sm text-neutral-500">
+                            Laster materialer...
+                          </div>
+                        ) : filteredMaterials.length === 0 ? (
+                          <div className="px-4 py-4 text-sm text-neutral-500">
+                            Ingen materialer matcher søket ditt.
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-neutral-200">
+                            {filteredMaterials.slice(0, 16).map((material) => {
+                              const isFavorite = favoriteMaterialIds.includes(material.id);
+                              const alreadySelected = selectedMaterials.some(
+                                (item) => item.materialId === material.id
+                              );
+
+                              return (
+                                <div
+                                  key={material.id}
+                                  className="flex items-center justify-between gap-3 px-4 py-3"
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleFavoriteMaterial(material.id)}
+                                    className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm ${
+                                      isFavorite
+                                        ? "border-amber-300 bg-amber-50 text-amber-700"
+                                        : "border-neutral-300 bg-white text-neutral-500"
+                                    }`}
+                                    aria-label={
+                                      isFavorite
+                                        ? "Fjern fra favoritter"
+                                        : "Legg til som favoritt"
+                                    }
+                                    title={
+                                      isFavorite
+                                        ? "Fjern fra favoritter"
+                                        : "Legg til som favoritt"
+                                    }
+                                  >
+                                    ★
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedMaterialId(material.id)}
+                                    className="min-w-0 flex-1 text-left"
+                                  >
+                                    <p className="truncate text-sm font-medium">
+                                      {material.name}
+                                    </p>
+                                    <p className="mt-1 truncate text-xs text-neutral-500">
+                                      {material.supplier || "Ukjent leverandør"} •{" "}
+                                      {material.unit} •{" "}
+                                      {formatCurrency(
+                                        calculateMaterialUnitPrice(material)
+                                      )}{" "}
+                                      kr
+                                    </p>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickAddMaterial(material)}
+                                    disabled={alreadySelected}
+                                    className="min-h-[40px] rounded-xl bg-black px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
+                                  >
+                                    {alreadySelected ? "Valgt" : "Legg til"}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={handleAddMaterial}
+                        disabled={!selectedMaterialId}
+                        className="min-h-[48px] w-full rounded-2xl bg-black px-4 py-3 text-sm font-medium text-white disabled:opacity-50 lg:w-[140px]"
+                      >
+                        Legg til
+                      </button>
+
+                      {selectedMaterialDetails ? (
+                        <div className="rounded-2xl border border-neutral-200 bg-white p-4 lg:w-[220px]">
+                          <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                            Valgt nå
+                          </p>
+                          <p className="mt-2 text-sm font-medium">
+                            {selectedMaterialDetails.name}
+                          </p>
+                          <p className="mt-1 text-xs text-neutral-500">
+                            {selectedMaterialDetails.supplier || "Ukjent leverandør"} •{" "}
+                            {selectedMaterialDetails.unit}
+                          </p>
+                          <p className="mt-3 text-sm font-semibold">
+                            {formatCurrency(
+                              calculateMaterialUnitPrice(selectedMaterialDetails)
+                            )}{" "}
+                            kr
+                          </p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {materialsError ? (
@@ -900,10 +1250,27 @@ export default function NewOfferPage() {
                     >
                       <div className="flex flex-col gap-4">
                         <div className="min-w-0">
-                          <p className="font-medium">{item.name}</p>
-                          <p className="mt-1 text-sm text-neutral-500">
-                            {item.supplier || "Ukjent leverandør"} • {item.unit}
-                          </p>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-medium">{item.name}</p>
+                              <p className="mt-1 text-sm text-neutral-500">
+                                {item.supplier || "Ukjent leverandør"} • {item.unit}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => toggleFavoriteMaterial(item.materialId)}
+                              className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm ${
+                                favoriteMaterialIds.includes(item.materialId)
+                                  ? "border-amber-300 bg-amber-50 text-amber-700"
+                                  : "border-neutral-300 bg-white text-neutral-500"
+                              }`}
+                              title="Favoritt"
+                            >
+                              ★
+                            </button>
+                          </div>
 
                           <div className="mt-3 grid gap-3 sm:grid-cols-4">
                             <div>
@@ -1115,28 +1482,28 @@ export default function NewOfferPage() {
 
               <div className="mt-5 rounded-2xl bg-neutral-50 p-4">
                 <p className="text-sm text-neutral-500">Kunde</p>
-                <p className="mt-1 font-medium break-words">
+                <p className="mt-1 break-words font-medium">
                   {customer.trim() || "Ikke fylt inn enda"}
                 </p>
               </div>
 
               <div className="mt-4 rounded-2xl bg-neutral-50 p-4">
                 <p className="text-sm text-neutral-500">E-post</p>
-                <p className="mt-1 font-medium break-words">
+                <p className="mt-1 break-words font-medium">
                   {customerEmail.trim() || "Ikke fylt inn enda"}
                 </p>
               </div>
 
               <div className="mt-4 rounded-2xl bg-neutral-50 p-4">
                 <p className="text-sm text-neutral-500">Telefon</p>
-                <p className="mt-1 font-medium break-words">
+                <p className="mt-1 break-words font-medium">
                   {customerPhone.trim() || "Ikke fylt inn enda"}
                 </p>
               </div>
 
               <div className="mt-4 rounded-2xl bg-neutral-50 p-4">
                 <p className="text-sm text-neutral-500">Tittel</p>
-                <p className="mt-1 font-medium break-words">
+                <p className="mt-1 break-words font-medium">
                   {title.trim() || "Ikke fylt inn enda"}
                 </p>
               </div>

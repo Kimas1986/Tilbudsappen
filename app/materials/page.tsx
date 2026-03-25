@@ -116,7 +116,7 @@ export default async function MaterialsPage({
   searchParams: SearchParams;
 }) {
   const resolvedSearchParams = await searchParams;
-  const errorMessage = String(resolvedSearchParams?.error || "").trim();
+  const message = String(resolvedSearchParams?.error || "").trim();
 
   const supabase = await createClient();
 
@@ -173,7 +173,7 @@ export default async function MaterialsPage({
       redirect("/materials?error=Kunne+ikke+lagre+materiale");
     }
 
-    redirect("/materials");
+    redirect("/materials?error=Materiale+lagret");
   }
 
   async function bulkImportMaterials(formData: FormData) {
@@ -262,8 +262,11 @@ export default async function MaterialsPage({
     }
 
     const existingMap = new Map(
-      ((existingMaterials as { id: string; name: string; supplier: string | null }[] | null) ||
-        []).map((item) => [
+      (
+        (existingMaterials as
+          | { id: string; name: string; supplier: string | null }[]
+          | null) || []
+      ).map((item) => [
         `${normalizeMatchValue(item.name)}__${normalizeMatchValue(item.supplier)}`,
         item,
       ])
@@ -405,7 +408,7 @@ export default async function MaterialsPage({
       redirect("/materials?error=Kunne+ikke+oppdatere+materiale");
     }
 
-    redirect("/materials");
+    redirect("/materials?error=Auto-lagret");
   }
 
   async function deleteMaterial(formData: FormData) {
@@ -438,7 +441,7 @@ export default async function MaterialsPage({
       redirect("/materials?error=Kunne+ikke+slette+materiale");
     }
 
-    redirect("/materials");
+    redirect("/materials?error=Materiale+slettet");
   }
 
   async function createTemplate(formData: FormData) {
@@ -472,7 +475,7 @@ export default async function MaterialsPage({
       redirect("/materials?error=Kunne+ikke+lagre+materialmal");
     }
 
-    redirect("/materials");
+    redirect("/materials?error=Materialmal+lagret");
   }
 
   async function updateTemplate(formData: FormData) {
@@ -514,7 +517,7 @@ export default async function MaterialsPage({
       redirect("/materials?error=Kunne+ikke+oppdatere+materialmal");
     }
 
-    redirect("/materials");
+    redirect("/materials?error=Materialmal+oppdatert");
   }
 
   async function deleteTemplate(formData: FormData) {
@@ -547,7 +550,7 @@ export default async function MaterialsPage({
       redirect("/materials?error=Kunne+ikke+slette+materialmal");
     }
 
-    redirect("/materials");
+    redirect("/materials?error=Materialmal+slettet");
   }
 
   async function addTemplateItem(formData: FormData) {
@@ -616,7 +619,7 @@ export default async function MaterialsPage({
       redirect("/materials?error=Kunne+ikke+legge+til+materiale+i+mal");
     }
 
-    redirect("/materials");
+    redirect("/materials?error=Materiale+lagt+til+i+mal");
   }
 
   async function updateTemplateItemQuantity(formData: FormData) {
@@ -656,7 +659,7 @@ export default async function MaterialsPage({
       redirect("/materials?error=Kunne+ikke+oppdatere+antall+i+mal");
     }
 
-    redirect("/materials");
+    redirect("/materials?error=Antall+oppdatert");
   }
 
   async function deleteTemplateItem(formData: FormData) {
@@ -689,7 +692,7 @@ export default async function MaterialsPage({
       redirect("/materials?error=Kunne+ikke+fjerne+mallinje");
     }
 
-    redirect("/materials");
+    redirect("/materials?error=Mallinje+fjernet");
   }
 
   const [
@@ -760,9 +763,9 @@ export default async function MaterialsPage({
                 </p>
               </div>
 
-              {errorMessage ? (
+              {message ? (
                 <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                  {errorMessage}
+                  {message}
                 </div>
               ) : null}
 
@@ -1013,7 +1016,7 @@ G-F 23X048 LEKT KL1 BNT | Byggmakker | m | 15.40`}
                 <div>
                   <h2 className="text-xl font-semibold">Dine materialer</h2>
                   <p className="mt-1 text-sm text-neutral-500">
-                    Tett hurtigvisning for rask prisjustering.
+                    Endringer lagres automatisk etter et kort opphold.
                   </p>
                 </div>
 
@@ -1023,6 +1026,11 @@ G-F 23X048 LEKT KL1 BNT | Byggmakker | m | 15.40`}
                 >
                   Tilbake
                 </a>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                Auto-lagring er aktiv. Når du endrer navn, leverandør, pris,
+                svinn, påslag eller enhet, lagres raden automatisk.
               </div>
 
               {typedMaterials.length === 0 ? (
@@ -1041,7 +1049,7 @@ G-F 23X048 LEKT KL1 BNT | Byggmakker | m | 15.40`}
                             <th className="px-4 py-3 font-medium">Svinn %</th>
                             <th className="px-4 py-3 font-medium">Påslag %</th>
                             <th className="px-4 py-3 font-medium">Salgspris</th>
-                            <th className="px-4 py-3 font-medium">Lagre</th>
+                            <th className="px-4 py-3 font-medium">Status</th>
                             <th className="px-4 py-3 font-medium">Slett</th>
                           </tr>
                         </thead>
@@ -1051,13 +1059,93 @@ G-F 23X048 LEKT KL1 BNT | Byggmakker | m | 15.40`}
                               key={material.id}
                               className="border-t border-neutral-200 align-top"
                             >
-                              <td className="px-4 py-3">
-                                <form action={updateMaterial} className="contents">
+                              <td colSpan={8} className="p-0">
+                                <form
+                                  action={updateMaterial}
+                                  data-autosave-form="true"
+                                  className="grid min-w-full grid-cols-[280px_160px_88px_110px_90px_90px_140px_120px]"
+                                >
                                   <input
                                     type="hidden"
                                     name="materialId"
                                     value={material.id}
                                   />
+
+                                  <div className="px-4 py-3">
+                                    <input
+                                      name="name"
+                                      defaultValue={material.name}
+                                      className="w-full rounded-xl border border-neutral-300 px-3 py-2"
+                                    />
+                                  </div>
+
+                                  <div className="px-4 py-3">
+                                    <input
+                                      name="supplier"
+                                      defaultValue={material.supplier || ""}
+                                      className="w-full rounded-xl border border-neutral-300 px-3 py-2"
+                                    />
+                                  </div>
+
+                                  <div className="px-4 py-3">
+                                    <select
+                                      name="unit"
+                                      defaultValue={material.unit}
+                                      className="w-full rounded-xl border border-neutral-300 px-3 py-2"
+                                    >
+                                      <option value="stk">stk</option>
+                                      <option value="m">m</option>
+                                      <option value="m2">m²</option>
+                                      <option value="m3">m³</option>
+                                      <option value="pakke">pakke</option>
+                                    </select>
+                                  </div>
+
+                                  <div className="px-4 py-3">
+                                    <input
+                                      name="base_price"
+                                      type="number"
+                                      step="0.01"
+                                      defaultValue={material.base_price}
+                                      className="w-full rounded-xl border border-neutral-300 px-3 py-2"
+                                    />
+                                  </div>
+
+                                  <div className="px-4 py-3">
+                                    <input
+                                      name="waste_percent"
+                                      type="number"
+                                      step="0.01"
+                                      defaultValue={material.waste_percent}
+                                      className="w-full rounded-xl border border-neutral-300 px-3 py-2"
+                                    />
+                                  </div>
+
+                                  <div className="px-4 py-3">
+                                    <input
+                                      name="markup_percent"
+                                      type="number"
+                                      step="0.01"
+                                      defaultValue={material.markup_percent}
+                                      className="w-full rounded-xl border border-neutral-300 px-3 py-2"
+                                    />
+                                  </div>
+
+                                  <div className="px-4 py-3">
+                                    <div className="whitespace-nowrap rounded-xl bg-neutral-100 px-3 py-2 font-medium">
+                                      {formatCurrency(calculateSuggestedPrice(material))} kr
+                                    </div>
+                                  </div>
+
+                                  <div className="px-4 py-3">
+                                    <div
+                                      data-autosave-status="true"
+                                      className="rounded-xl bg-neutral-100 px-3 py-2 text-sm text-neutral-600"
+                                    >
+                                      Klar
+                                    </div>
+                                  </div>
+
                                   <input
                                     type="hidden"
                                     name="sku"
@@ -1068,330 +1156,18 @@ G-F 23X048 LEKT KL1 BNT | Byggmakker | m | 15.40`}
                                     name="pricing_mode"
                                     value={material.pricing_mode || "markup"}
                                   />
-                                  <input
-                                    name="name"
-                                    defaultValue={material.name}
-                                    className="w-[280px] rounded-xl border border-neutral-300 px-3 py-2"
-                                  />
-                                </form>
-                              </td>
-                              <td className="px-4 py-3">
-                                <form action={updateMaterial} className="contents">
-                                  <input
-                                    type="hidden"
-                                    name="materialId"
-                                    value={material.id}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="name"
-                                    value={material.name}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="sku"
-                                    value={material.sku || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="pricing_mode"
-                                    value={material.pricing_mode || "markup"}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="unit"
-                                    value={material.unit}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="base_price"
-                                    value={material.base_price}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="waste_percent"
-                                    value={material.waste_percent}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="markup_percent"
-                                    value={material.markup_percent}
-                                  />
-                                  <input
-                                    name="supplier"
-                                    defaultValue={material.supplier || ""}
-                                    className="w-[160px] rounded-xl border border-neutral-300 px-3 py-2"
-                                  />
-                                </form>
-                              </td>
-                              <td className="px-4 py-3">
-                                <form action={updateMaterial} className="contents">
-                                  <input
-                                    type="hidden"
-                                    name="materialId"
-                                    value={material.id}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="name"
-                                    value={material.name}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="supplier"
-                                    value={material.supplier || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="sku"
-                                    value={material.sku || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="pricing_mode"
-                                    value={material.pricing_mode || "markup"}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="base_price"
-                                    value={material.base_price}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="waste_percent"
-                                    value={material.waste_percent}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="markup_percent"
-                                    value={material.markup_percent}
-                                  />
-                                  <select
-                                    name="unit"
-                                    defaultValue={material.unit}
-                                    className="w-[88px] rounded-xl border border-neutral-300 px-3 py-2"
-                                  >
-                                    <option value="stk">stk</option>
-                                    <option value="m">m</option>
-                                    <option value="m2">m²</option>
-                                    <option value="m3">m³</option>
-                                    <option value="pakke">pakke</option>
-                                  </select>
-                                </form>
-                              </td>
-                              <td className="px-4 py-3">
-                                <form action={updateMaterial} className="contents">
-                                  <input
-                                    type="hidden"
-                                    name="materialId"
-                                    value={material.id}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="name"
-                                    value={material.name}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="supplier"
-                                    value={material.supplier || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="sku"
-                                    value={material.sku || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="pricing_mode"
-                                    value={material.pricing_mode || "markup"}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="unit"
-                                    value={material.unit}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="waste_percent"
-                                    value={material.waste_percent}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="markup_percent"
-                                    value={material.markup_percent}
-                                  />
-                                  <input
-                                    name="base_price"
-                                    type="number"
-                                    step="0.01"
-                                    defaultValue={material.base_price}
-                                    className="w-[110px] rounded-xl border border-neutral-300 px-3 py-2"
-                                  />
-                                </form>
-                              </td>
-                              <td className="px-4 py-3">
-                                <form action={updateMaterial} className="contents">
-                                  <input
-                                    type="hidden"
-                                    name="materialId"
-                                    value={material.id}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="name"
-                                    value={material.name}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="supplier"
-                                    value={material.supplier || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="sku"
-                                    value={material.sku || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="pricing_mode"
-                                    value={material.pricing_mode || "markup"}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="unit"
-                                    value={material.unit}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="base_price"
-                                    value={material.base_price}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="markup_percent"
-                                    value={material.markup_percent}
-                                  />
-                                  <input
-                                    name="waste_percent"
-                                    type="number"
-                                    step="0.01"
-                                    defaultValue={material.waste_percent}
-                                    className="w-[90px] rounded-xl border border-neutral-300 px-3 py-2"
-                                  />
-                                </form>
-                              </td>
-                              <td className="px-4 py-3">
-                                <form action={updateMaterial} className="contents">
-                                  <input
-                                    type="hidden"
-                                    name="materialId"
-                                    value={material.id}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="name"
-                                    value={material.name}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="supplier"
-                                    value={material.supplier || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="sku"
-                                    value={material.sku || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="pricing_mode"
-                                    value={material.pricing_mode || "markup"}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="unit"
-                                    value={material.unit}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="base_price"
-                                    value={material.base_price}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="waste_percent"
-                                    value={material.waste_percent}
-                                  />
-                                  <input
-                                    name="markup_percent"
-                                    type="number"
-                                    step="0.01"
-                                    defaultValue={material.markup_percent}
-                                    className="w-[90px] rounded-xl border border-neutral-300 px-3 py-2"
-                                  />
-                                </form>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="whitespace-nowrap rounded-xl bg-neutral-100 px-3 py-2 font-medium">
-                                  {formatCurrency(calculateSuggestedPrice(material))} kr
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <form action={updateMaterial}>
-                                  <input
-                                    type="hidden"
-                                    name="materialId"
-                                    value={material.id}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="name"
-                                    value={material.name}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="supplier"
-                                    value={material.supplier || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="sku"
-                                    value={material.sku || ""}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="pricing_mode"
-                                    value={material.pricing_mode || "markup"}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="unit"
-                                    value={material.unit}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="base_price"
-                                    value={material.base_price}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="waste_percent"
-                                    value={material.waste_percent}
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="markup_percent"
-                                    value={material.markup_percent}
-                                  />
+
                                   <button
                                     type="submit"
-                                    className="rounded-xl bg-black px-3 py-2 text-sm font-medium text-white"
+                                    hidden
+                                    aria-hidden="true"
+                                    tabIndex={-1}
                                   >
                                     Lagre
                                   </button>
                                 </form>
                               </td>
+
                               <td className="px-4 py-3">
                                 <form action={deleteMaterial}>
                                   <input
@@ -1420,41 +1196,49 @@ G-F 23X048 LEKT KL1 BNT | Byggmakker | m | 15.40`}
                         key={material.id}
                         className="rounded-2xl border border-neutral-200 p-4"
                       >
-                        <form action={updateMaterial} className="space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-medium text-blue-800">
+                            Auto-lagring
+                          </div>
+
+                          <form action={deleteMaterial}>
+                            <input
+                              type="hidden"
+                              name="materialId"
+                              value={material.id}
+                            />
+                            <button
+                              type="submit"
+                              className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
+                            >
+                              Slett
+                            </button>
+                          </form>
+                        </div>
+
+                        <form
+                          action={updateMaterial}
+                          data-autosave-form="true"
+                          className="mt-3 space-y-3"
+                        >
                           <input
                             type="hidden"
                             name="materialId"
                             value={material.id}
                           />
 
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <input
-                                name="name"
-                                defaultValue={material.name}
-                                className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm font-medium"
-                              />
-                              <input
-                                name="supplier"
-                                defaultValue={material.supplier || ""}
-                                className="mt-2 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm"
-                                placeholder="Leverandør"
-                              />
-                            </div>
-
-                            <form action={deleteMaterial}>
-                              <input
-                                type="hidden"
-                                name="materialId"
-                                value={material.id}
-                              />
-                              <button
-                                type="submit"
-                                className="rounded-xl bg-red-100 px-3 py-2 text-sm font-medium text-red-700"
-                              >
-                                Slett
-                              </button>
-                            </form>
+                          <div className="min-w-0 flex-1">
+                            <input
+                              name="name"
+                              defaultValue={material.name}
+                              className="w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm font-medium"
+                            />
+                            <input
+                              name="supplier"
+                              defaultValue={material.supplier || ""}
+                              className="mt-2 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm"
+                              placeholder="Leverandør"
+                            />
                           </div>
 
                           <div className="grid grid-cols-2 gap-3">
@@ -1540,16 +1324,27 @@ G-F 23X048 LEKT KL1 BNT | Byggmakker | m | 15.40`}
                             </div>
                           </div>
 
-                          <div className="rounded-xl bg-neutral-100 px-3 py-3 text-sm">
-                            <span className="text-neutral-500">Anslått salgspris:</span>{" "}
-                            <span className="font-semibold">
-                              {formatCurrency(calculateSuggestedPrice(material))} kr
-                            </span>
+                          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                            <div className="rounded-xl bg-neutral-100 px-3 py-3 text-sm">
+                              <span className="text-neutral-500">Anslått salgspris:</span>{" "}
+                              <span className="font-semibold">
+                                {formatCurrency(calculateSuggestedPrice(material))} kr
+                              </span>
+                            </div>
+
+                            <div
+                              data-autosave-status="true"
+                              className="rounded-xl bg-neutral-100 px-3 py-3 text-sm text-neutral-600"
+                            >
+                              Klar
+                            </div>
                           </div>
 
                           <button
                             type="submit"
-                            className="w-full rounded-xl bg-black px-4 py-3 text-sm font-medium text-white"
+                            hidden
+                            aria-hidden="true"
+                            tabIndex={-1}
                           >
                             Lagre
                           </button>
@@ -1843,6 +1638,68 @@ G-F 23X048 LEKT KL1 BNT | Byggmakker | m | 15.40`}
           </div>
         </div>
       </div>
+
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            (() => {
+              const forms = Array.from(document.querySelectorAll('form[data-autosave-form="true"]'));
+              if (!forms.length) return;
+
+              forms.forEach((form) => {
+                let timer = null;
+                let submitting = false;
+                let lastSnapshot = '';
+
+                const statusEl = form.querySelector('[data-autosave-status="true"]');
+
+                const setStatus = (text) => {
+                  if (!statusEl) return;
+                  statusEl.textContent = text;
+                };
+
+                const snapshot = () => {
+                  const data = new FormData(form);
+                  return Array.from(data.entries())
+                    .map(([key, value]) => \`\${key}=\${value}\`)
+                    .join('&');
+                };
+
+                lastSnapshot = snapshot();
+
+                const scheduleSubmit = () => {
+                  const nextSnapshot = snapshot();
+
+                  if (nextSnapshot === lastSnapshot) {
+                    return;
+                  }
+
+                  setStatus('Lagrer...');
+                  clearTimeout(timer);
+
+                  timer = setTimeout(() => {
+                    if (submitting) return;
+                    submitting = true;
+                    lastSnapshot = nextSnapshot;
+                    form.requestSubmit();
+                  }, 700);
+                };
+
+                form.addEventListener('input', scheduleSubmit);
+                form.addEventListener('change', scheduleSubmit);
+                form.addEventListener('submit', () => {
+                  setStatus('Lagrer...');
+                });
+
+                window.addEventListener('pageshow', () => {
+                  submitting = false;
+                  setStatus('Klar');
+                });
+              });
+            })();
+          `,
+        }}
+      />
     </main>
   );
 }
