@@ -102,6 +102,10 @@ function parseNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeMatchValue(value: string | null | undefined) {
+  return String(value || "").trim().toLowerCase();
+}
+
 type SearchParams = Promise<{
   error?: string;
 }>;
@@ -189,14 +193,18 @@ export default async function MaterialsPage({
     const supplierFallback = String(formData.get("bulk_supplier") || "").trim();
     const unitFallback = String(formData.get("bulk_unit") || "stk").trim() || "stk";
     const pricingMode = String(formData.get("bulk_pricing_mode") || "markup").trim();
-    const wastePercent = parseNumber(String(formData.get("bulk_waste_percent") || "10"));
-    const markupPercent = parseNumber(String(formData.get("bulk_markup_percent") || "15"));
+    const wastePercent = parseNumber(
+      String(formData.get("bulk_waste_percent") || "10")
+    );
+    const markupPercent = parseNumber(
+      String(formData.get("bulk_markup_percent") || "15")
+    );
 
     if (!raw) {
       redirect("/materials?error=Mangler+linjer+for+bulkimport");
     }
 
-    const rows = raw
+    const parsedRows = raw
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
@@ -217,19 +225,51 @@ export default async function MaterialsPage({
         }
 
         return {
-          user_id: user.id,
-          supplier,
-          sku: null,
           name,
+          supplier,
           unit,
           base_price: basePrice,
           waste_percent: wastePercent,
           markup_percent: markupPercent,
           pricing_mode: pricingMode || "markup",
-          last_updated_at: new Date().toISOString(),
         };
       })
       .filter(Boolean) as {
+      name: string;
+      supplier: string | null;
+      unit: string;
+      base_price: number;
+      waste_percent: number;
+      markup_percent: number;
+      pricing_mode: string;
+    }[];
+
+    if (parsedRows.length === 0) {
+      redirect("/materials?error=Fant+ingen+gyldige+linjer+for+bulkimport");
+    }
+
+    const { data: existingMaterials, error: existingMaterialsError } = await supabase
+      .from("materials")
+      .select("id, name, supplier")
+      .eq("user_id", user.id);
+
+    if (existingMaterialsError) {
+      console.error(
+        "Feil ved henting av eksisterende materialer for bulkimport:",
+        existingMaterialsError
+      );
+      redirect("/materials?error=Kunne+ikke+hente+eksisterende+materialer");
+    }
+
+    const existingMap = new Map(
+      ((existingMaterials as { id: string; name: string; supplier: string | null }[] | null) ||
+        []).map((item) => [
+        `${normalizeMatchValue(item.name)}__${normalizeMatchValue(item.supplier)}`,
+        item,
+      ])
+    );
+
+    const rowsToInsert: {
       user_id: string;
       supplier: string | null;
       sku: null;
@@ -240,20 +280,76 @@ export default async function MaterialsPage({
       markup_percent: number;
       pricing_mode: string;
       last_updated_at: string;
-    }[];
+    }[] = [];
 
-    if (rows.length === 0) {
-      redirect("/materials?error=Fant+ingen+gyldige+linjer+for+bulkimport");
+    let updatedCount = 0;
+    let insertedCount = 0;
+
+    for (const row of parsedRows) {
+      const matchKey = `${normalizeMatchValue(row.name)}__${normalizeMatchValue(
+        row.supplier
+      )}`;
+      const existing = existingMap.get(matchKey);
+
+      if (existing?.id) {
+        const { error: updateError } = await supabase
+          .from("materials")
+          .update({
+            unit: row.unit,
+            base_price: row.base_price,
+            waste_percent: row.waste_percent,
+            markup_percent: row.markup_percent,
+            pricing_mode: row.pricing_mode,
+            last_updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id)
+          .eq("user_id", user.id);
+
+        if (updateError) {
+          console.error("Feil ved oppdatering i bulkimport:", updateError);
+          redirect("/materials?error=Kunne+ikke+oppdatere+eksisterende+materialer");
+        }
+
+        updatedCount += 1;
+        continue;
+      }
+
+      rowsToInsert.push({
+        user_id: user.id,
+        supplier: row.supplier,
+        sku: null,
+        name: row.name,
+        unit: row.unit,
+        base_price: row.base_price,
+        waste_percent: row.waste_percent,
+        markup_percent: row.markup_percent,
+        pricing_mode: row.pricing_mode,
+        last_updated_at: new Date().toISOString(),
+      });
     }
 
-    const { error } = await supabase.from("materials").insert(rows);
+    if (rowsToInsert.length > 0) {
+      const { error: insertError } = await supabase
+        .from("materials")
+        .insert(rowsToInsert);
 
-    if (error) {
-      console.error("Feil ved bulkimport av materialer:", error);
-      redirect("/materials?error=Kunne+ikke+importere+materialer");
+      if (insertError) {
+        console.error("Feil ved innsetting i bulkimport:", insertError);
+        redirect("/materials?error=Kunne+ikke+importere+nye+materialer");
+      }
+
+      insertedCount = rowsToInsert.length;
     }
 
-    redirect("/materials");
+    if (insertedCount === 0 && updatedCount === 0) {
+      redirect("/materials?error=Ingen+materialer+ble+importert");
+    }
+
+    redirect(
+      `/materials?error=${encodeURIComponent(
+        `Bulkimport ferdig: ${insertedCount} nye, ${updatedCount} oppdatert`
+      )}`
+    );
   }
 
   async function updateMaterial(formData: FormData) {
@@ -774,13 +870,15 @@ export default async function MaterialsPage({
 
             <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/5 sm:p-8">
               <div>
-                <h2 className="text-xl font-semibold">Bulk import</h2>
+                <h2 className="text-xl font-semibold">Bulk import / oppdatering</h2>
                 <p className="mt-2 text-sm text-neutral-500">
                   Lim inn mange varer samtidig i formatet:
                   <br />
                   <span className="font-medium">
                     Navn | Leverandør | Enhet | Pris
                   </span>
+                  <br />
+                  Eksisterende varer med samme navn + leverandør blir oppdatert.
                 </p>
               </div>
 
@@ -867,7 +965,7 @@ G-F 23X048 LEKT KL1 BNT | Byggmakker | m | 15.40`}
                   type="submit"
                   className="w-full rounded-2xl bg-black px-4 py-4 text-white"
                 >
-                  Importer materialer
+                  Importer / oppdater materialer
                 </button>
               </form>
             </section>
