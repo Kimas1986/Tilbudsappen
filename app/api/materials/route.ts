@@ -15,6 +15,18 @@ type MaterialInput = {
   pricing_mode?: string | null;
 };
 
+type ExistingMaterial = {
+  id: string;
+  name: string;
+  supplier: string | null;
+  unit: string | null;
+  sku: string | null;
+  base_price: number | null;
+  waste_percent: number | null;
+  markup_percent: number | null;
+  pricing_mode: string | null;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? "")
     .trim()
@@ -233,24 +245,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Ugyldig request body" }, { status: 400 });
     }
 
+    const bodyRecord = body as Record<string, unknown>;
+
     const bulkText =
-      typeof body.bulkText === "string"
-        ? body.bulkText
-        : typeof body.bulk === "string"
-        ? body.bulk
+      typeof bodyRecord.bulkText === "string"
+        ? bodyRecord.bulkText
+        : typeof bodyRecord.bulk === "string"
+        ? bodyRecord.bulk
         : "";
 
-    const rawItems: MaterialInput[] = Array.isArray(body.items)
-      ? body.items
+    const rawItems: MaterialInput[] = Array.isArray(bodyRecord.items)
+      ? (bodyRecord.items as MaterialInput[])
       : bulkText
       ? bulkText
           .split(/\r?\n/)
-          .map((line) => parseBulkLine(line))
+          .map((line: string) => parseBulkLine(line))
           .filter((item): item is MaterialInput => Boolean(item))
-      : [body as MaterialInput];
+      : [bodyRecord as MaterialInput];
 
     const normalizedItems = rawItems
-      .map((item) => normalizeIncomingMaterial(item))
+      .map((item: MaterialInput) => normalizeIncomingMaterial(item))
       .filter((item): item is MaterialInput => Boolean(item));
 
     if (!normalizedItems.length) {
@@ -285,22 +299,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existingByKey = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        supplier: string | null;
-        unit: string | null;
-        sku: string | null;
-        base_price: number | null;
-        waste_percent: number | null;
-        markup_percent: number | null;
-        pricing_mode: string | null;
-      }
-    >();
+    const existingByKey = new Map<string, ExistingMaterial>();
 
-    for (const existing of existingMaterials || []) {
+    for (const existing of (existingMaterials || []) as ExistingMaterial[]) {
       existingByKey.set(makeMaterialKey(existing.name, existing.supplier), existing);
     }
 
